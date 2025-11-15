@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "name": "Python Source to Docs Sync",
+  "description": "Watches Python source files, configuration files, and project metadata for changes and triggers documentation updates in README.md",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*.py",
+      "tests/**/*.py",
+      "pyproject.toml",
+      ".env.example"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Source code or configuration files have been modified. Please review the changes and update the README.md file to reflect any new functionality, API changes, configuration options, or usage examples. Ensure the documentation accurately represents the current state of the codebase."
+  }
+}
