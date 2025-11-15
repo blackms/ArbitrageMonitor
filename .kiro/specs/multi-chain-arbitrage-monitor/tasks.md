@@ -15,14 +15,14 @@
     - Add foreign key constraints and check constraints
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-  - [-] 2.2 Implement database manager with asyncpg
+  - [x] 2.2 Implement database manager with asyncpg
     - Create DatabaseManager class with connection pooling (min 5, max 20)
     - Implement save_opportunity, save_transaction, update_arbitrageur methods
     - Implement query methods with filtering support
     - Add retry logic for transient failures (3 attempts with exponential backoff)
     - _Requirements: 6.6, 6.7, 14.3, 14.4_
 
-  - [ ] 2.3 Write database integration tests
+  - [-] 2.3 Write database integration tests
     - Test connection pooling and concurrent writes
     - Test transaction rollback on errors
     - Test query performance with large datasets
