@@ -8,7 +8,7 @@
   - Configure structured logging with structlog
   - _Requirements: 1.1, 1.3_
 
-- [-] 2. Implement database schema and connection management
+- [x] 2. Implement database schema and connection management
   - [x] 2.1 Create PostgreSQL schema with all tables
     - Write SQL schema for chains, opportunities, transactions, arbitrageurs, chain_stats tables
     - Create indexes for high-frequency queries (chain_id, block_number, profit_usd, etc.)
@@ -22,28 +22,28 @@
     - Add retry logic for transient failures (3 attempts with exponential backoff)
     - _Requirements: 6.6, 6.7, 14.3, 14.4_
 
-  - [-] 2.3 Write database integration tests
+  - [x] 2.3 Write database integration tests
     - Test connection pooling and concurrent writes
     - Test transaction rollback on errors
     - Test query performance with large datasets
     - _Requirements: 6.1-6.9_
 
-- [ ] 3. Implement blockchain interaction layer
-  - [ ] 3.1 Create base chain connector with web3.py
+- [-] 3. Implement blockchain interaction layer
+  - [x] 3.1 Create base chain connector with web3.py
     - Implement ChainConnector base class with RPC connection management
     - Add automatic failover logic for backup RPC endpoints
     - Implement get_latest_block, get_block, get_transaction_receipt methods
     - Add circuit breaker pattern for RPC failures (open after 5 failures, 60s timeout)
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 14.1, 14.2_
 
-  - [ ] 3.2 Implement BSC chain connector
+  - [x] 3.2 Implement BSC chain connector
     - Create BSCConnector class extending ChainConnector
     - Configure BSC RPC endpoints (primary and fallback)
     - Define BSC DEX router addresses (PancakeSwap V2/V3, BiSwap, ApeSwap, THENA)
     - Define BSC pool addresses (WBNB pairs)
     - _Requirements: 1.1, 1.2, 3.1, 3.2, 3.3, 3.4, 3.5_
 
-  - [ ] 3.3 Implement Polygon chain connector
+  - [-] 3.3 Implement Polygon chain connector
     - Create PolygonConnector class extending ChainConnector
     - Configure Polygon RPC endpoints (primary and fallback)
     - Define Polygon DEX router addresses (QuickSwap, SushiSwap, Uniswap V3, Balancer)
