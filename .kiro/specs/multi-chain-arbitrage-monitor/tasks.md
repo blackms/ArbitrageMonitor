@@ -56,22 +56,22 @@
     - Test connection recovery after failures
     - _Requirements: 1.1-1.7, 14.1-14.6_
 
-- [ ] 4. Implement Swap event detection and arbitrage classification
-  - [ ] 4.1 Create transaction analyzer with proper event signature detection
+- [x] 4. Implement Swap event detection and arbitrage classification
+  - [x] 4.1 Create transaction analyzer with proper event signature detection
     - Calculate Swap event signature using web3.keccak(text="Swap(address,uint256,uint256,uint256,uint256,address)")
     - Implement count_swap_events method that filters by event signature (topics[0])
     - Implement parse_swap_events to extract token amounts from event data
     - Ensure only Swap events are counted, not Transfer, Sync, or Approval events
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 4.2 Implement arbitrage classification logic
+  - [x] 4.2 Implement arbitrage classification logic
     - Create is_arbitrage method that checks swap_count >= 2
     - Verify transaction targets known DEX router address
     - Verify transaction uses recognized swap method signature
     - Extract method signature from transaction input data (first 4 bytes)
     - _Requirements: 2.3, 2.4, 2.5, 2.7_
 
-  - [ ] 4.3 Write comprehensive unit tests for swap detection
+  - [x] 4.3 Write comprehensive unit tests for swap detection
     - Test Swap event signature calculation matches expected value
     - Test count_swap_events with transaction containing multiple event types (should count only Swaps)
     - Test single swap transaction is NOT classified as arbitrage
@@ -80,22 +80,22 @@
     - Test swap method signature recognition
     - _Requirements: 2.1, 2.2, 2.3, 2.6, 2.7_
 
-- [ ] 5. Implement profit calculation engine
+- [-] 5. Implement profit calculation engine
   - [ ] 5.1 Create profit calculator with token flow parsing
-    - Implement parse_swap_event to extract amounts from event log data
+    - Implement ProfitCalculator class in src/detectors/profit_calculator.py
     - Implement extract_token_flow to identify input from first swap and output from last swap
-    - Handle both amount0In/amount1In and amount0Out/amount1Out fields
+    - Handle both amount0In/amount1In and amount0Out/amount1Out fields from SwapEvent objects
     - _Requirements: 5.1, 5.2, 5.3_
 
   - [ ] 5.2 Implement profit and gas cost calculation
     - Calculate gross profit as output_amount - input_amount
-    - Calculate gas cost as gasUsed * effectiveGasPrice
+    - Calculate gas cost as gasUsed * effectiveGasPrice from transaction receipt
     - Calculate net profit as gross_profit - gas_cost
     - Calculate ROI as (net_profit / input_amount) * 100
-    - Convert native token amounts to USD using price feeds
+    - Convert native token amounts to USD using chain config native_token_usd price
     - _Requirements: 5.4, 5.5, 5.6, 5.7_
 
-  - [ ] 5.3 Write profit calculation tests
+  - [ ]* 5.3 Write profit calculation tests
     - Test input amount extraction from first swap
     - Test output amount extraction from last swap
     - Test gross profit calculation
@@ -106,10 +106,11 @@
     - _Requirements: 5.1-5.7_
 
 - [ ] 6. Implement pool scanner and opportunity detector
-  - [ ] 6.1 Create pool scanner with multicall support
-    - Implement PoolScanner class with get_pool_reserves method
-    - Use multicall to batch reserve queries for efficiency
-    - Query getReserves() function on pool contracts
+  - [ ] 6.1 Create pool scanner with reserve querying
+    - Implement PoolScanner class in src/detectors/pool_scanner.py
+    - Implement get_pool_reserves method to query getReserves() function on pool contracts
+    - Use web3.py contract calls to fetch reserve data
+    - Handle pool contract ABI for Uniswap V2-style pools
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
   - [ ] 6.2 Implement CPMM imbalance calculation
@@ -124,10 +125,10 @@
     - Scan pools every 3 seconds for BSC, 2 seconds for Polygon
     - Create Opportunity objects for imbalances > 5%
     - Save opportunities to database via DatabaseManager
-    - Emit opportunities_detected metric
+    - Log opportunity detection events
     - _Requirements: 4.7, 6.6_
 
-  - [ ] 6.4 Write pool scanner tests
+  - [ ]* 6.4 Write pool scanner tests
     - Test reserve retrieval from pool contracts
     - Test CPMM invariant calculation
     - Test imbalance percentage calculation
@@ -137,41 +138,42 @@
 
 - [ ] 7. Implement chain monitor orchestration
   - [ ] 7.1 Create chain monitor with block processing
-    - Implement ChainMonitor class with start/stop methods
-    - Poll for new blocks every 1 second
-    - Process all transactions in each block
-    - Filter transactions targeting DEX routers
-    - Track last synced block number
+    - Implement ChainMonitor class in src/monitors/chain_monitor.py
+    - Implement start/stop methods with asyncio task management
+    - Poll for new blocks every 1 second using ChainConnector.get_latest_block()
+    - Process all transactions in each block using ChainConnector.get_block()
+    - Filter transactions targeting DEX routers using ChainConnector.is_dex_router()
+    - Track last synced block number in memory
     - _Requirements: 1.5, 1.6, 9.6_
 
   - [ ] 7.2 Implement transaction processing pipeline
-    - Get transaction receipt for each filtered transaction
-    - Pass receipt to TransactionAnalyzer for arbitrage detection
-    - If arbitrage detected, calculate profit using ProfitCalculator
-    - Save transaction to database
-    - Update arbitrageur profile
-    - Emit transactions_detected metric
+    - Get transaction receipt for each filtered transaction using ChainConnector.get_transaction_receipt()
+    - Pass receipt and transaction to TransactionAnalyzer.is_arbitrage() for detection
+    - If arbitrage detected, parse swap events using TransactionAnalyzer.parse_swap_events()
+    - Calculate profit using ProfitCalculator
+    - Create ArbitrageTransaction object and save to database
+    - Update arbitrageur profile using DatabaseManager.update_arbitrageur()
+    - Log transaction detection events
     - _Requirements: 2.1-2.7, 5.1-5.7, 6.7, 10.1-10.8_
 
-  - [ ] 7.3 Add monitoring metrics and error handling
-    - Emit chain_blocks_behind metric
-    - Emit chain_rpc_latency metric
-    - Emit detection_latency metric
-    - Handle RPC errors with automatic failover
-    - Handle parsing errors gracefully (log and continue)
-    - Implement graceful shutdown on stop signal
-    - _Requirements: 1.7, 9.5, 12.1, 12.2, 12.3, 12.5, 14.5, 14.6_
+  - [ ] 7.3 Add error handling and graceful shutdown
+    - Handle RPC errors with automatic failover (already in ChainConnector)
+    - Handle parsing errors gracefully (log and continue processing)
+    - Implement graceful shutdown on stop() call
+    - Cancel asyncio tasks cleanly
+    - Log chain monitor lifecycle events
+    - _Requirements: 1.7, 9.5, 14.5, 14.6_
 
-  - [ ] 7.4 Write chain monitor integration tests
+  - [ ]* 7.4 Write chain monitor integration tests
     - Test block detection and processing
     - Test transaction filtering by DEX router
     - Test RPC failover on connection errors
     - Test graceful error handling
     - _Requirements: 1.1-1.7, 9.1-9.6, 14.1-14.7_
 
-- [ ] 8. Implement arbitrageur tracking
-  - [ ] 8.1 Create arbitrageur tracker
-    - Implement update_arbitrageur method in DatabaseManager
+- [x] 8. Implement arbitrageur tracking
+  - [x] 8.1 Create arbitrageur tracker
+    - Implement update_arbitrageur method in DatabaseManager (already completed)
     - On new transaction, check if arbitrageur exists (by address and chain_id)
     - If new, create arbitrageur record with first_seen timestamp
     - Update last_seen, total_transactions, successful/failed counts
@@ -180,34 +182,37 @@
     - Determine preferred_strategy from transaction history (most common hop count)
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8_
 
-  - [ ] 8.2 Write arbitrageur tracking tests
-    - Test new arbitrageur creation
-    - Test existing arbitrageur updates
-    - Test profit accumulation
-    - Test gas cost accumulation
-    - Test preferred strategy calculation
+  - [x] 8.2 Write arbitrageur tracking tests
+    - Test new arbitrageur creation (completed in test_database.py)
+    - Test existing arbitrageur updates (completed in test_database.py)
+    - Test profit accumulation (completed in test_database.py)
+    - Test gas cost accumulation (completed in test_database.py)
+    - Test preferred strategy calculation (completed in test_database.py)
     - _Requirements: 10.1-10.8_
 
 - [ ] 9. Implement small trader viability analysis
   - [ ] 9.1 Add small opportunity classification
-    - In opportunity detection, classify opportunities with profit $10K-$100K as "small"
-    - Track small_opportunities_count in chain_stats table
-    - When opportunity is captured, check if it was small and increment small_opps_captured
+    - In PoolScanner, classify opportunities with profit $10K-$100K as "small"
+    - Add is_small_opportunity helper method to check profit range
+    - Track small opportunity count when saving to database
     - _Requirements: 11.1, 11.2, 11.3_
 
-  - [ ] 9.2 Implement capture rate calculation
+  - [ ] 9.2 Implement statistics aggregation service
+    - Create StatsAggregator class in src/analytics/stats_aggregator.py
+    - Implement hourly aggregation job to populate chain_stats table
     - Calculate capture_rate as (total_captured / total_opportunities) * 100
     - Calculate small opportunity capture rate separately
-    - Store in chain_stats table hourly
+    - Query opportunities and transactions from database for aggregation
     - _Requirements: 11.4_
 
   - [ ] 9.3 Add competition level tracking
     - Track unique arbitrageurs per hour in chain_stats
     - For small opportunities, track which arbitrageurs captured them
     - Calculate average competition level as arbitrageurs per opportunity
+    - Store aggregated data in chain_stats table
     - _Requirements: 11.5, 11.6_
 
-  - [ ] 9.4 Write viability analysis tests
+  - [ ]* 9.4 Write viability analysis tests
     - Test small opportunity classification
     - Test capture rate calculation
     - Test competition level tracking
@@ -215,98 +220,98 @@
 
 - [ ] 10. Implement REST API with FastAPI
   - [ ] 10.1 Create FastAPI application with authentication
-    - Set up FastAPI app with CORS middleware
-    - Implement API key authentication via X-API-Key header
-    - Add rate limiting middleware (100 req/min per key)
-    - Configure OpenAPI documentation
+    - Create FastAPI app in src/api/app.py
+    - Set up CORS middleware with allowed origins
+    - Implement API key authentication dependency via X-API-Key header
+    - Create authentication middleware to validate API keys from Settings
+    - Configure OpenAPI documentation at /docs
     - _Requirements: 7.8, 13.1, 13.2_
 
   - [ ] 10.2 Implement chain status endpoint
-    - Create GET /api/v1/chains endpoint
+    - Create GET /api/v1/chains endpoint in src/api/routes/chains.py
+    - Query chains table for status information
     - Return list of chains with status, last_synced_block, blocks_behind, uptime_pct
-    - Cache response for 30 seconds
+    - Use Pydantic models for response validation
     - _Requirements: 7.1_
 
   - [ ] 10.3 Implement opportunities endpoint
-    - Create GET /api/v1/opportunities endpoint
-    - Support filtering by chain, min_profit, max_profit, limit
-    - Support pagination with page and per_page parameters
+    - Create GET /api/v1/opportunities endpoint in src/api/routes/opportunities.py
+    - Use DatabaseManager.get_opportunities() with OpportunityFilters
+    - Support filtering by chain_id, min_profit, max_profit, captured
+    - Support pagination with limit and offset query parameters
     - Return opportunities with all fields including capture status
-    - Cache expensive queries for 60 seconds
     - _Requirements: 7.2, 7.6_
 
   - [ ] 10.4 Implement transactions endpoint
-    - Create GET /api/v1/transactions endpoint
-    - Support filtering by chain, min_profit, min_swaps, limit
-    - Support pagination
+    - Create GET /api/v1/transactions endpoint in src/api/routes/transactions.py
+    - Use DatabaseManager.get_transactions() with TransactionFilters
+    - Support filtering by chain_id, from_address, min_profit, min_swaps, strategy
+    - Support pagination with limit and offset
     - Return transactions with profit, gas cost, pools involved, tokens involved
     - _Requirements: 7.2, 7.6_
 
   - [ ] 10.5 Implement arbitrageurs endpoint
-    - Create GET /api/v1/arbitrageurs endpoint
-    - Support filtering by chain, min_transactions, sort order
-    - Support pagination
+    - Create GET /api/v1/arbitrageurs endpoint in src/api/routes/arbitrageurs.py
+    - Use DatabaseManager.get_arbitrageurs() with ArbitrageurFilters
+    - Support filtering by chain_id, min_transactions, sort_by, sort_order
+    - Support pagination with limit and offset
     - Return arbitrageur profiles with success rate, total profit, preferred strategy
     - _Requirements: 7.2, 7.6_
 
   - [ ] 10.6 Implement statistics endpoint
-    - Create GET /api/v1/stats endpoint
-    - Support filtering by chain and time period (1h, 24h, 7d, 30d)
+    - Create GET /api/v1/stats endpoint in src/api/routes/stats.py
+    - Query chain_stats table for aggregated statistics
+    - Support filtering by chain_id and time period (1h, 24h, 7d, 30d)
     - Return aggregated statistics including small opportunity analysis
     - Include profit distribution (min, max, avg, median, p95)
     - Include gas statistics
-    - Cache for 60 seconds
     - _Requirements: 7.2, 7.6, 7.7_
 
   - [ ] 10.7 Add health check endpoint
-    - Create GET /api/v1/health endpoint
-    - Check database connectivity
-    - Check Redis connectivity
-    - Check chain monitor status
-    - Return 200 if healthy, 503 if unhealthy
+    - Create GET /api/v1/health endpoint in src/api/routes/health.py
+    - Check database connectivity using DatabaseManager.pool
+    - Return 200 if healthy with status details, 503 if unhealthy
+    - Include database pool size and free connections in response
     - _Requirements: 1.7, 12.1-12.5_
 
-  - [ ] 10.8 Write API integration tests
+  - [ ]* 10.8 Write API integration tests
     - Test authentication with valid and invalid API keys
-    - Test rate limiting enforcement
     - Test all endpoints with various filters
     - Test pagination behavior
-    - Test response caching
     - Test error responses
     - _Requirements: 7.1-7.8, 13.1-13.7_
 
-- [ ] 11. Implement WebSocket streaming
+- [ ] 11. Implement WebSocket streaming (OPTIONAL - can be deferred)
   - [ ] 11.1 Create WebSocket server with subscription management
-    - Implement WebSocket endpoint at /ws/v1/stream
-    - Handle connection, disconnection, and heartbeat
+    - Implement WebSocket endpoint at /ws/v1/stream in src/api/websocket.py
+    - Handle connection, disconnection, and heartbeat using FastAPI WebSocket
     - Support subscribe/unsubscribe messages with filters
     - Track active subscriptions per connection
     - Limit to 100 concurrent connections
     - _Requirements: 8.1, 8.7_
 
   - [ ] 11.2 Implement opportunity broadcasting
-    - When opportunity detected, broadcast to subscribed clients
+    - When opportunity detected in PoolScanner, broadcast to subscribed clients
     - Filter broadcasts based on client subscription filters (chain, profit range)
-    - Broadcast within 100ms of detection
+    - Use asyncio queues for message passing
     - _Requirements: 8.2, 8.4_
 
   - [ ] 11.3 Implement transaction broadcasting
-    - When arbitrage transaction detected, broadcast to subscribed clients
+    - When arbitrage transaction detected in ChainMonitor, broadcast to subscribed clients
     - Filter broadcasts based on client subscription filters (chain, min_swaps)
-    - Broadcast within 100ms of detection
+    - Use asyncio queues for message passing
     - _Requirements: 8.3, 8.5, 8.6_
 
-  - [ ] 11.4 Write WebSocket integration tests
+  - [ ]* 11.4 Write WebSocket integration tests
     - Test connection handling and heartbeat
     - Test subscription filtering
     - Test broadcast delivery
     - Test connection limit enforcement
-    - Test reconnection behavior
     - _Requirements: 8.1-8.7_
 
-- [ ] 12. Implement caching layer with Redis
+- [ ] 12. Implement caching layer with Redis (OPTIONAL - can be deferred)
   - [ ] 12.1 Create cache manager
-    - Implement CacheManager class with Redis connection
+    - Implement CacheManager class in src/cache/manager.py with Redis connection
     - Add cache_opportunity method with 5-minute TTL
     - Add get_cached_stats method
     - Add invalidate_cache method for pattern-based invalidation
@@ -316,51 +321,41 @@
     - Cache recent opportunities (last 1000 per chain)
     - Cache aggregated statistics (60 second TTL)
     - Cache arbitrageur leaderboards (300 second TTL)
-    - Implement cache warming on startup
     - _Requirements: 7.6, 7.7_
 
-  - [ ] 12.3 Write cache integration tests
+  - [ ]* 12.3 Write cache integration tests
     - Test cache hit/miss behavior
     - Test TTL expiration
     - Test cache invalidation
-    - Test cache warming
     - _Requirements: 7.6, 7.7_
 
-- [ ] 13. Implement monitoring and alerting
+- [ ] 13. Implement monitoring and alerting (OPTIONAL - can be deferred)
   - [ ] 13.1 Set up Prometheus metrics
+    - Create metrics module in src/monitoring/metrics.py
     - Create metrics for chain health (blocks_behind, rpc_latency, rpc_errors)
-    - Create metrics for detection performance (opportunities_detected, transactions_detected, detection_latency)
-    - Create metrics for database performance (query_latency, connection_pool_size, errors)
+    - Create metrics for detection performance (opportunities_detected, transactions_detected)
+    - Create metrics for database performance (query_latency, connection_pool_size)
     - Create metrics for API performance (requests_total, latency, errors)
-    - Create metrics for business KPIs (total_profit, active_arbitrageurs, small_opportunities_pct)
-    - Expose metrics endpoint at /metrics
+    - Expose metrics endpoint at /metrics in FastAPI app
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
 
-  - [ ] 13.2 Implement alert conditions
-    - Add alert for blocks_behind > 100 (critical)
-    - Add alert for rpc_latency p95 > 2000ms (warning)
-    - Add alert for database connection pool > 80% (critical)
-    - Add alert for no opportunities detected in 5 minutes (warning)
-    - _Requirements: 12.7, 12.8, 12.9_
-
-  - [ ] 13.3 Write monitoring tests
+  - [ ]* 13.2 Write monitoring tests
     - Test metric emission
     - Test metric accuracy
-    - Test alert condition evaluation
     - _Requirements: 12.1-12.9_
 
-- [ ] 14. Implement data retention and archival
+- [ ] 14. Implement data retention and archival (OPTIONAL - can be deferred)
   - [ ] 14.1 Create data retention service
+    - Implement DataRetentionService class in src/services/retention.py
     - Implement scheduled job to delete opportunities older than 30 days
     - Implement scheduled job to archive transactions older than 90 days
     - Run retention jobs during low-activity hours (2 AM - 4 AM UTC)
     - Maintain referential integrity during deletion/archival
     - _Requirements: 15.1, 15.2, 15.5, 15.6_
 
-  - [ ] 14.2 Write data retention tests
+  - [ ]* 14.2 Write data retention tests
     - Test opportunity deletion after 30 days
     - Test transaction archival after 90 days
-    - Test referential integrity maintenance
     - _Requirements: 15.1-15.6_
 
 - [ ] 15. Create Docker deployment configuration
@@ -370,75 +365,45 @@
     - Copy application code
     - Set up non-root user for security
     - Expose port 8000
+    - Set CMD to run main application
     - _Requirements: 1.1-1.7_
 
   - [ ] 15.2 Create docker-compose.yml
     - Define postgres service with volume for data persistence
-    - Define redis service with volume for data persistence
     - Define monitor service with environment variables
-    - Set up service dependencies
+    - Set up service dependencies (monitor depends on postgres)
     - Configure restart policies
+    - Map ports for API access
     - _Requirements: 1.1-1.7_
 
-  - [ ] 15.3 Create environment configuration
-    - Create .env.example with all required variables
-    - Document RPC endpoint configuration
-    - Document database credentials
-    - Document API keys
+  - [x] 15.3 Create environment configuration
+    - .env.example already exists with all required variables
+    - Documents RPC endpoint configuration
+    - Documents database credentials
+    - Documents API keys
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 13.1_
 
 - [ ] 16. Create main application entry point
   - [ ] 16.1 Implement application startup
-    - Create main.py with FastAPI app initialization
-    - Start BSC chain monitor in background task
-    - Start Polygon chain monitor in background task
-    - Start pool scanner for both chains
-    - Initialize database connection pool
-    - Initialize Redis connection
+    - Create main.py in project root
+    - Initialize Settings from environment variables
+    - Create DatabaseManager and connect
+    - Initialize database schema
+    - Create BSC and Polygon ChainConnectors
+    - Create TransactionAnalyzer for each chain
+    - Create ProfitCalculator
+    - Create PoolScanner for each chain
+    - Create ChainMonitor for BSC and Polygon
+    - Start FastAPI app with uvicorn
+    - Start chain monitors as background tasks
+    - Start pool scanners as background tasks
     - Set up signal handlers for graceful shutdown
     - _Requirements: 1.1-1.7, 9.1-9.6_
 
   - [ ] 16.2 Implement graceful shutdown
     - Stop chain monitors on SIGTERM/SIGINT
+    - Stop pool scanners
     - Close database connections
-    - Close Redis connections
     - Wait for in-flight requests to complete
+    - Log shutdown events
     - _Requirements: 14.6, 14.7_
-
-- [ ] 17. End-to-end validation
-  - [ ] 17.1 Deploy to test environment
-    - Build Docker images
-    - Start all services with docker-compose
-    - Verify database schema creation
-    - Verify chain monitors start successfully
-    - _Requirements: 1.1-1.7_
-
-  - [ ] 17.2 Validate opportunity detection
-    - Monitor logs for opportunity detection
-    - Verify opportunities are saved to database
-    - Query opportunities via API
-    - Verify WebSocket broadcasts
-    - _Requirements: 4.1-4.7, 6.1-6.7, 7.1-7.2, 8.1-8.7_
-
-  - [ ] 17.3 Validate transaction analysis
-    - Wait for arbitrage transactions to be detected
-    - Verify Swap event counting is accurate (no false positives)
-    - Verify profit calculations are correct
-    - Verify arbitrageur profiles are updated
-    - Query transactions via API
-    - _Requirements: 2.1-2.7, 5.1-5.7, 10.1-10.8_
-
-  - [ ] 17.4 Validate performance requirements
-    - Monitor detection latency (should be <2 seconds)
-    - Monitor API response times (should be <200ms)
-    - Monitor blocks_behind metric (should be <5)
-    - Verify system handles expected TPS (200 for BSC, 300 for Polygon)
-    - _Requirements: 9.1-9.6_
-
-  - [ ] 17.5 Run 24-hour burn-in test
-    - Let system run for 24 hours
-    - Monitor for memory leaks
-    - Monitor for connection pool exhaustion
-    - Verify no crashes or restarts
-    - Verify data consistency
-    - _Requirements: 1.7, 9.1-9.6_

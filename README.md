@@ -82,7 +82,28 @@ The transaction analyzer module provides accurate arbitrage detection with zero 
 
 ### Features
 
-- **Swap Event Signature Filtering**: Uses 
+- **Swap Event Signature Filtering**: Uses cryptographic event signatures (`Web3.keccak`) to identify only genuine Swap events, filtering out Transfer, Sync, Approval, and other event types
+- **Multi-Hop Detection**: Classifies transactions with 2+ swaps as arbitrage opportunities
+- **DEX Router Validation**: Verifies transactions target known DEX router addresses (PancakeSwap, QuickSwap, etc.)
+- **Method Signature Recognition**: Validates swap function calls including Uniswap V2/V3, Balancer, and fee-on-transfer token methods
+- **Comprehensive Testing**: Full test coverage for event signature calculation, swap counting, and arbitrage classification
+
+### Swap Event Detection
+
+The analyzer calculates the Swap event signature using:
+```python
+SWAP_EVENT_SIGNATURE = Web3.keccak(
+    text="Swap(address,uint256,uint256,uint256,uint256,address)"
+).hex()
+```
+
+This ensures only actual Swap events are counted by comparing the first topic (`topics[0]`) of each log entry against the expected signature. The test suite verifies:
+- Correct signature calculation (66 characters: `0x` + 64 hex chars)
+- Accurate filtering of Swap events from mixed event logs
+- Single swap transactions are NOT classified as arbitrage
+- Multi-hop transactions (2+ swaps) ARE classified as arbitrage
+
+### Chain Connector Features
 
 - **RPC Failover**: Automatic failover to backup RPC endpoints on connection failures
 - **Circuit Breaker**: Prevents cascading failures with configurable thresholds (default: 5 failures, 60s timeout)
@@ -201,6 +222,9 @@ Run specific test modules:
 ```bash
 # Test chain connectors (RPC failover, circuit breaker)
 poetry run pytest tests/test_chain_connector.py -v
+
+# Test transaction analyzer (swap detection, arbitrage classification)
+poetry run pytest tests/test_transaction_analyzer.py -v
 
 # Test database integration
 poetry run pytest tests/test_database.py -v
