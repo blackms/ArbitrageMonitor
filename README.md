@@ -75,6 +75,13 @@ cp .env.example .env
 # Edit .env with your configuration
 ```
 
+Key configuration options:
+- `DATABASE_URL`: PostgreSQL connection string
+- `REDIS_URL`: Redis connection string (optional, for caching)
+- `PROMETHEUS_PORT`: Standalone metrics server port (default: 9090)
+- `API_KEYS`: Comma-separated API keys for authentication
+- `LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR)
+
 3. Set up PostgreSQL and Redis (using Docker):
 ```bash
 docker-compose up -d postgres redis
@@ -3130,6 +3137,15 @@ poetry run ruff check src tests
 
 The system includes comprehensive Prometheus metrics for monitoring system health, performance, and business metrics across all components.
 
+### Overview
+
+The metrics system provides two deployment options:
+
+1. **Integrated Endpoint** (Default): Metrics available at `/metrics` on the main API server (port 8000)
+2. **Standalone Server** (Recommended for Production): Dedicated metrics server on a separate port (default: 9090)
+
+The standalone server is automatically started by `main.py` and can be configured via the `PROMETHEUS_PORT` environment variable.
+
 ### Features
 
 - **Chain Health Metrics**: RPC latency, error rates, blocks behind
@@ -3138,6 +3154,7 @@ The system includes comprehensive Prometheus metrics for monitoring system healt
 - **API Performance**: Request rates, latency percentiles, error rates
 - **WebSocket Metrics**: Active connections, messages sent
 - **Business Metrics**: Total profit detected, active arbitrageurs, small opportunity percentage
+- **Flexible Deployment**: Choose between integrated or standalone metrics server
 
 ### Metrics Endpoint
 
@@ -3482,6 +3499,18 @@ For production monitoring:
 
 6. **Document operational runbooks** for common alerts
 
+#### Environment Configuration
+
+Configure the metrics server port in your `.env` file:
+
+```bash
+# Monitoring Configuration
+PROMETHEUS_PORT=9090  # Standalone metrics server port (default: 9090)
+LOG_LEVEL=INFO
+```
+
+The main application (`main.py`) automatically starts the standalone metrics server on the configured port.
+
 #### Example Production Deployment
 
 ```python
@@ -3493,12 +3522,12 @@ from src.database.manager import DatabaseManager
 from src.cache.manager import CacheManager
 
 async def main():
-    # Initialize settings
+    # Initialize settings (reads PROMETHEUS_PORT from environment)
     settings = Settings()
     
-    # Start standalone metrics server on port 9090
-    start_metrics_server(port=9090)
-    print("Metrics server started on port 9090")
+    # Start standalone metrics server on configured port
+    start_metrics_server(port=settings.prometheus_port)
+    print(f"Metrics server started on port {settings.prometheus_port}")
     
     # Initialize database and cache
     db_manager = DatabaseManager(settings.database_url)
