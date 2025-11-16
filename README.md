@@ -546,6 +546,195 @@ opportunity = Opportunity(
 - **Selective Persistence**: Only saves opportunities exceeding threshold
 - **Connection Pooling**: Leverages chain connector's RPC connection management
 
+## Chain Monitor
+
+The chain monitor module orchestrates the complete blockchain monitoring pipeline, from block detection to transaction analysis and data persistence:
+
+### Features
+
+- **Real-time Block Monitoring**: Polls for new blocks every 1 second
+- **Transaction Filtering**: Filters transactions targeting known DEX routers
+- **Arbitrage Detection**: Analyzes transactions using TransactionAnalyzer
+- **Profit Calculation**: Calculates profit metrics using ProfitCalculator
+- **Data Persistence**: Saves arbitrage transactions to database
+- **Arbitrageur Tracking**: Updates arbitrageur profiles with transaction data
+- **Graceful Error Handling**: Continues monitoring despite RPC or parsing errors
+- **Async Task Management**: Non-blocking operation with proper shutdown handling
+
+### Architecture
+
+The ChainMonitor orchestrates multiple components:
+
+1. **ChainConnector**: Blockchain RPC interaction with failover
+2. **TransactionAnalyzer**: Swap event detection and arbitrage classification
+3. **ProfitCalculator**: Profit and gas cost calculations
+4. **DatabaseManager**: Data persistence and querying
+
+### Usage Example
+
+```python
+from src.monitors.chain_monitor import ChainMonitor
+from src.chains import BSCConnector
+from src.detectors import TransactionAnalyzer, ProfitCalculator
+from src.database import DatabaseManager
+from src.config.models import ChainConfig
+from decimal import Decimal
+
+# Configure BSC
+config = ChainConfig(
+    name="BSC",
+    chain_id=56,
+    rpc_urls=[
+        "https://bsc-dataseed.bnbchain.org",
+        "https://bsc-dataseed1.binance.org",
+    ],
+    block_time_seconds=3.0,
+    native_token="BNB",
+    native_token_usd=Decimal("300.0"),
+    dex_routers={
+        "PancakeSwap V2": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+        "PancakeSwap V3": "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4",
+    },
+    pools={
+        "WBNB-BUSD": "0x58F876857a02D6762E0101bb5C46A8c1ED44Dc16",
+    },
+)
+
+# Initialize components
+connector = BSCConnector(config)
+analyzer = TransactionAnalyzer("BSC", config.dex_routers)
+calculator = ProfitCalculator("BSC", config.native_token_usd)
+db_manager = DatabaseManager("postgresql://...")
+await db_manager.connect()
+
+# Create chain monitor
+monitor = ChainMonitor(
+    chain_connector=connector,
+    transaction_analyzer=analyzer,
+    profit_calculator=calculator,
+    database_manager=db_manager,
+)
+
+# Start monitoring
+await monitor.start()
+
+# Monitor runs in background, detecting and persisting arbitrage transactions...
+
+# Stop monitoring when done
+await monitor.stop()
+```
+
+### Processing Pipeline
+
+For each new block, the monitor:
+
+1. **Fetches Block Data**: Gets full block with all transactions
+2. **Filters Transactions**: Keeps only transactions to DEX routers
+3. **Gets Receipt**: Fetches transaction receipt for event logs
+4. **Detects Arbitrage**: Uses TransactionAnalyzer to check if transaction is arbitrage
+5. **Parses Swaps**: Extracts swap events from transaction logs
+6. **Calculates Profit**: Computes gross/net profit, gas costs, and ROI
+7. **Persists Data**: Saves ArbitrageTransaction to database
+8. **Updates Profile**: Updates arbitrageur statistics
+
+### Transaction Data
+
+Detected arbitrage transactions include:
+
+```python
+ArbitrageTransaction(
+    chain_id=56,
+    tx_hash="0x123...",
+    from_address="0xabc...",
+    block_number=12345678,
+    block_timestamp=datetime(...),
+    gas_price_gwei=Decimal("5.0"),
+    gas_used=150000,
+    gas_cost_native=Decimal("0.00075"),
+    gas_cost_usd=Decimal("0.225"),
+    swap_count=3,
+    strategy="3-hop",
+    profit_gross_usd=Decimal("30.0"),
+    profit_net_usd=Decimal("29.775"),
+    pools_involved=["0x58F...", "0x16b..."],
+    tokens_involved=[],
+    detected_at=datetime.utcnow(),
+)
+```
+
+### Strategy Classification
+
+Transactions are classified by hop count:
+
+- **2-hop**: Token A → Token B → Token A
+- **3-hop**: Token A → Token B → Token C → Token A
+- **4-hop**: Token A → Token B → Token C → Token D → Token A
+- **N-hop**: For transactions with more than 4 swaps
+
+### Logging
+
+The monitor provides comprehensive structured logging:
+
+- `chain_monitor_started`: Monitor initialization
+- `chain_monitor_loop_started`: Monitoring loop begins
+- `chain_monitor_initialized`: First block sync point set
+- `new_blocks_detected`: New blocks available for processing
+- `processing_block`: Block processing started
+- `block_processed`: Block processing completed
+- `arbitrage_transaction_processed`: Arbitrage transaction detected and saved
+- `arbitrage_insufficient_swap_events`: Warning when swap count is invalid
+- `transaction_processing_error`: Error processing specific transaction
+- `block_processing_error`: Error processing entire block
+- `chain_monitor_loop_error`: Error in main monitoring loop
+- `chain_monitor_stopped`: Monitor shutdown
+- `chain_monitor_loop_cancelled`: Monitoring loop cancelled
+- `chain_monitor_loop_exited`: Monitoring loop exited
+
+### Error Handling
+
+The monitor handles errors at multiple levels:
+
+- **RPC Errors**: Automatic failover via ChainConnector
+- **Transaction Errors**: Logs error and continues to next transaction
+- **Block Errors**: Logs error and continues to next block
+- **Loop Errors**: Logs error and continues monitoring after 1 second delay
+
+This ensures continuous monitoring even when individual operations fail.
+
+### Graceful Shutdown
+
+The monitor supports graceful shutdown:
+
+```python
+# Stop monitoring
+await monitor.stop()
+
+# This will:
+# 1. Set _running flag to False
+# 2. Cancel the monitoring task
+# 3. Wait for task cancellation
+# 4. Log shutdown events
+```
+
+### Performance Characteristics
+
+- **Poll Interval**: 1 second (configurable via sleep duration)
+- **Block Processing**: Sequential to maintain order
+- **Transaction Processing**: Sequential within each block
+- **Non-blocking**: All I/O operations are async
+- **Memory Efficient**: Processes one block at a time
+- **Fault Tolerant**: Continues despite individual failures
+
+### Integration with Other Components
+
+The ChainMonitor integrates seamlessly with:
+
+- **ChainConnector**: RPC interaction with automatic failover
+- **TransactionAnalyzer**: Accurate arbitrage detection with zero false positives
+- **ProfitCalculator**: Complete profit analysis with gas costs
+- **DatabaseManager**: Persistent storage with connection pooling
+- **PoolScanner**: Can run in parallel for opportunity detection
+
 ## Development
 
 Run all tests:
