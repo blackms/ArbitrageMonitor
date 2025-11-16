@@ -19,7 +19,7 @@ Production-ready system to detect, track, and analyze real multi-hop arbitrage o
 - **Method Signature Recognition**: Validates swap function calls (supports Uniswap V2/V3, Balancer, and more)
 - **Profit Calculator**: Calculates gross profit, gas costs, net profit, and ROI from arbitrage transactions
 - **Token Flow Analysis**: Extracts input/output amounts from multi-hop swap sequences
-- Pool imbalance detection using CPMM formulas
+- **Pool Scanner**: Real-time monitoring of liquidity pools for arbitrage opportunities using CPMM imbalance detection
 
 ### Data Management
 - PostgreSQL database with connection pooling (5-20 connections)
@@ -324,6 +324,228 @@ The calculator provides structured logging for debugging and monitoring:
 - `extract_token_flow_no_input`: Warning when no input amount found
 - `extract_token_flow_no_output`: Warning when no output amount found
 
+## Pool Scanner
+
+The pool scanner module monitors liquidity pools in real-time to detect arbitrage opportunities through pool imbalances:
+
+### Features
+
+- **CPMM Imbalance Detection**: Uses Constant Product Market Maker formula (k = x × y) to identify pool imbalances
+- **Real-time Reserve Monitoring**: Queries pool reserves using `getReserves()` function on Uniswap V2-style pools
+- **Profit Potential Calculation**: Estimates profit after accounting for swap fees (default 0.3%)
+- **Configurable Thresholds**: Customizable imbalance threshold (default 5%) and scan intervals
+- **Automatic Persistence**: Saves detected opportunities to database with full context
+- **Async Scanning Loop**: Non-blocking continuous monitoring with configurable intervals
+- **Multi-Pool Support**: Scans multiple pools per chain simultaneously
+
+### CPMM Imbalance Formula
+
+The scanner uses the Constant Product Market Maker invariant to detect imbalances:
+
+```
+k = reserve0 × reserve1 (constant product)
+optimal_reserve0 = optimal_reserve1 = √k
+imbalance_pct = max(|reserve0 - optimal| / optimal, |reserve1 - optimal| / optimal) × 100
+profit_potential = (imbalance_pct - swap_fee_pct) × reserve_size
+```
+
+When a pool's reserves deviate from the optimal balanced state, it creates an arbitrage opportunity. The scanner calculates:
+
+1. **Pool Invariant (k)**: Product of both reserves
+2. **Optimal Reserves**: Square root of k (balanced state)
+3. **Imbalance Percentage**: Maximum deviation from optimal state
+4. **Profit Potential**: Excess imbalance after deducting swap fees
+
+### Data Classes
+
+```python
+@dataclass
+class PoolReserves:
+    """Pool reserve data from getReserves() call"""
+    pool_address: str
+    pool_name: str
+    reserve0: int              # Reserve amount for token0
+    reserve1: int              # Reserve amount for token1
+    block_timestamp: int       # Last update timestamp
+
+@dataclass
+class ImbalanceData:
+    """Pool imbalance calculation results"""
+    imbalance_pct: Decimal           # Imbalance percentage
+    profit_potential_usd: Decimal    # Estimated profit in USD
+    profit_potential_native: Decimal # Estimated profit in native token
+    optimal_reserve0: Decimal        # Optimal reserve for token0
+    optimal_reserve1: Decimal        # Optimal reserve for token1
+```
+
+### Usage Example
+
+```python
+from src.detectors.pool_scanner import PoolScanner
+from src.chains import BSCConnector
+from src.database import DatabaseManager
+from src.config.models import ChainConfig
+from decimal import Decimal
+
+# Configure BSC with pools to monitor
+config = ChainConfig(
+    name="BSC",
+    chain_id=56,
+    rpc_urls=["https://bsc-dataseed.bnbchain.org"],
+    block_time_seconds=3.0,
+    native_token="BNB",
+    native_token_usd=Decimal("300.0"),
+    dex_routers={...},
+    pools={
+        "WBNB-BUSD": "0x58F876857a02D6762E0101bb5C46A8c1ED44Dc16",
+        "WBNB-USDT": "0x16b9a82891338f9bA80E2D6970FddA79D1eb0daE",
+    },
+)
+
+# Initialize components
+connector = BSCConnector(config)
+db_manager = DatabaseManager("postgresql://...")
+await db_manager.connect()
+
+# Create pool scanner
+scanner = PoolScanner(
+    chain_connector=connector,
+    config=config,
+    database_manager=db_manager,
+    scan_interval_seconds=3.0,      # Scan every 3 seconds (BSC block time)
+    imbalance_threshold_pct=5.0,    # Detect imbalances >= 5%
+    swap_fee_pct=0.3,               # Account for 0.3% swap fee
+)
+
+# Start continuous scanning
+await scanner.start()
+
+# Scanner runs in background, detecting opportunities...
+# Opportunities are automatically saved to database
+
+# Stop scanning when done
+await scanner.stop()
+```
+
+### Manual Pool Scanning
+
+For one-time scans without the background loop:
+
+```python
+# Scan all pools once
+opportunities = await scanner.scan_pools()
+
+for opp in opportunities:
+    print(f"Pool: {opp.pool_name}")
+    print(f"Imbalance: {opp.imbalance_pct:.2f}%")
+    print(f"Profit Potential: ${opp.profit_usd:.2f}")
+    print(f"Block: {opp.block_number}")
+```
+
+### Reserve Querying
+
+Query individual pool reserves:
+
+```python
+reserves = await scanner.get_pool_reserves(
+    pool_address="0x58F876857a02D6762E0101bb5C46A8c1ED44Dc16",
+    pool_name="WBNB-BUSD"
+)
+
+if reserves:
+    print(f"Reserve0: {reserves.reserve0}")
+    print(f"Reserve1: {reserves.reserve1}")
+    print(f"Timestamp: {reserves.block_timestamp}")
+```
+
+### Imbalance Calculation
+
+Calculate imbalance for specific reserves:
+
+```python
+imbalance_data = scanner.calculate_imbalance(
+    reserve0=1000000000000000000000,  # 1000 tokens
+    reserve1=300000000000000000000000, # 300000 tokens
+)
+
+if imbalance_data:
+    print(f"Imbalance: {imbalance_data.imbalance_pct:.2f}%")
+    print(f"Profit (USD): ${imbalance_data.profit_potential_usd:.2f}")
+    print(f"Optimal Reserve0: {imbalance_data.optimal_reserve0}")
+    print(f"Optimal Reserve1: {imbalance_data.optimal_reserve1}")
+```
+
+### Configuration Options
+
+The pool scanner supports flexible configuration:
+
+- **scan_interval_seconds**: Time between scans (default 3.0 for BSC, 2.0 for Polygon)
+- **imbalance_threshold_pct**: Minimum imbalance to detect (default 5.0%)
+- **swap_fee_pct**: DEX swap fee to account for (default 0.3%)
+- **database_manager**: Optional database for persisting opportunities
+
+### Scan Intervals by Chain
+
+Recommended scan intervals based on block times:
+
+- **BSC**: 3 seconds (matches ~3s block time)
+- **Polygon**: 2 seconds (matches ~2s block time)
+- **Ethereum**: 12 seconds (matches ~12s block time)
+
+### Logging
+
+The scanner provides structured logging for monitoring:
+
+- `pool_scanner_started`: Scanner initialization with configuration
+- `pool_reserves_fetched`: Successful reserve query with amounts
+- `opportunity_detected`: Opportunity found with imbalance and profit details
+- `pool_scanner_stopped`: Scanner shutdown
+- `pool_reserves_fetch_failed`: Warning when reserve query fails
+- `pool_reserves_zero`: Warning when reserves are zero
+- `failed_to_get_block_number`: Error getting current block
+- `failed_to_save_opportunity`: Error persisting to database
+- `pool_scan_error`: General scanning error
+
+### Error Handling
+
+The scanner handles errors gracefully:
+
+- **RPC Failures**: Logs warning and continues to next pool
+- **Zero Reserves**: Skips calculation and logs warning
+- **Database Errors**: Logs error but continues scanning
+- **Block Number Errors**: Returns empty opportunities list
+
+The background scanning loop continues running even if individual scans fail, ensuring continuous monitoring.
+
+### Integration with Database
+
+When a database manager is provided, opportunities are automatically persisted:
+
+```python
+# Opportunity saved to database includes:
+opportunity = Opportunity(
+    chain_id=56,
+    pool_name="WBNB-BUSD",
+    pool_address="0x58F876857a02D6762E0101bb5C46A8c1ED44Dc16",
+    imbalance_pct=Decimal("7.5"),
+    profit_usd=Decimal("15000.50"),
+    profit_native=Decimal("50.0"),
+    reserve0=Decimal("1000000.0"),
+    reserve1=Decimal("300000000.0"),
+    block_number=12345678,
+    detected_at=datetime.utcnow(),
+    captured=False,  # Not yet captured by arbitrageur
+)
+```
+
+### Performance Considerations
+
+- **Async Operations**: All RPC calls are async for non-blocking execution
+- **Batch Scanning**: Scans all pools in parallel within each interval
+- **Configurable Intervals**: Adjust scan frequency based on chain block time
+- **Selective Persistence**: Only saves opportunities exceeding threshold
+- **Connection Pooling**: Leverages chain connector's RPC connection management
+
 ## Development
 
 Run all tests:
@@ -341,6 +563,9 @@ poetry run pytest tests/test_transaction_analyzer.py -v
 
 # Test profit calculator (token flow, gas costs, profit calculation)
 poetry run pytest tests/test_profit_calculator.py -v
+
+# Test pool scanner (reserve querying, imbalance detection)
+poetry run pytest tests/test_pool_scanner.py -v
 
 # Test database integration
 poetry run pytest tests/test_database.py -v

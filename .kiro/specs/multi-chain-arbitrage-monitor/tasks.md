@@ -95,7 +95,7 @@
     - Convert native token amounts to USD using chain config native_token_usd price
     - _Requirements: 5.4, 5.5, 5.6, 5.7_
 
-  - [ ]* 5.3 Write profit calculation tests
+  - [x] 5.3 Write profit calculation tests
     - Test input amount extraction from first swap
     - Test output amount extraction from last swap
     - Test gross profit calculation
@@ -105,15 +105,15 @@
     - Test handling of zero input amounts
     - _Requirements: 5.1-5.7_
 
-- [ ] 6. Implement pool scanner and opportunity detector
-  - [ ] 6.1 Create pool scanner with reserve querying
+- [x] 6. Implement pool scanner and opportunity detector
+  - [x] 6.1 Create pool scanner with reserve querying
     - Implement PoolScanner class in src/detectors/pool_scanner.py
     - Implement get_pool_reserves method to query getReserves() function on pool contracts
     - Use web3.py contract calls to fetch reserve data
     - Handle pool contract ABI for Uniswap V2-style pools
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-  - [ ] 6.2 Implement CPMM imbalance calculation
+  - [x] 6.2 Implement CPMM imbalance calculation
     - Calculate pool invariant k = reserve0 * reserve1
     - Calculate optimal reserves: optimal_x = optimal_y = sqrt(k)
     - Calculate imbalance percentage: max(|reserve0 - optimal_x| / optimal_x, |reserve1 - optimal_y| / optimal_y) * 100
@@ -121,7 +121,7 @@
     - Convert profit to USD assuming token1 is stablecoin
     - _Requirements: 4.5, 4.6_
 
-  - [ ] 6.3 Implement opportunity detection and persistence
+  - [x] 6.3 Implement opportunity detection and persistence
     - Scan pools every 3 seconds for BSC, 2 seconds for Polygon
     - Create Opportunity objects for imbalances > 5%
     - Save opportunities to database via DatabaseManager
