@@ -12,10 +12,13 @@ Production-ready system to detect, track, and analyze real multi-hop arbitrage o
 - DEX router recognition for PancakeSwap, QuickSwap, SushiSwap, Uniswap V3, and more
 
 ### Detection & Analysis
-- Accurate arbitrage detection with zero false positives
+- **Accurate Swap Event Detection**: Filters events by signature to count only Swap events, excluding Transfer, Sync, and Approval events
+- **Arbitrage Classification**: Identifies multi-hop arbitrage transactions (2+ swaps) targeting known DEX routers
+- **Swap Event Parsing**: Extracts token amounts (amount0In, amount1In, amount0Out, amount1Out) from event logs
+- **DEX Router Validation**: Verifies transactions target recognized DEX router addresses
+- **Method Signature Recognition**: Validates swap function calls (supports Uniswap V2/V3, Balancer, and more)
 - Pool imbalance detection using CPMM formulas
 - Real profit calculation including gas costs
-- Multi-hop transaction analysis
 
 ### Data Management
 - PostgreSQL database with connection pooling (5-20 connections)
@@ -73,9 +76,13 @@ await db_manager.connect()
 await db_manager.initialize_schema()
 ```
 
-## Chain Connectors
+## Transaction Analyzer
 
-The chain connector module provides robust blockchain interaction with:
+The transaction analyzer module provides accurate arbitrage detection with zero false positives:
+
+### Features
+
+- **Swap Event Signature Filtering**: Uses 
 
 - **RPC Failover**: Automatic failover to backup RPC endpoints on connection failures
 - **Circuit Breaker**: Prevents cascading failures with configurable thresholds (default: 5 failures, 60s timeout)
