@@ -13,6 +13,7 @@ from web3.exceptions import Web3Exception
 from web3.types import BlockData, TxReceipt
 
 from src.config.models import ChainConfig
+from src.monitoring import metrics
 
 logger = structlog.get_logger()
 
@@ -167,6 +168,7 @@ class ChainConnector(ABC):
         last_error = None
 
         for attempt in range(max_retries):
+            start_time = time.time()
             try:
                 # Check circuit breaker for current endpoint
                 current_rpc_url = self.rpc_urls[self.current_rpc_index]
@@ -186,6 +188,15 @@ class ChainConnector(ABC):
 
                 # Execute operation
                 result = func(*args, **kwargs)
+                
+                # Record success metrics
+                latency = time.time() - start_time
+                metrics.chain_rpc_latency.labels(
+                    chain=self.chain_name,
+                    endpoint=current_rpc_url,
+                    method=operation
+                ).observe(latency)
+                
                 circuit_breaker.record_success()
                 return result
 
@@ -194,6 +205,13 @@ class ChainConnector(ABC):
                 current_rpc_url = self.rpc_urls[self.current_rpc_index]
                 circuit_breaker = self._circuit_breakers[current_rpc_url]
                 circuit_breaker.record_failure()
+                
+                # Record error metrics
+                error_type = type(e).__name__
+                metrics.chain_rpc_errors.labels(
+                    chain=self.chain_name,
+                    error_type=error_type
+                ).inc()
 
                 logger.warning(
                     "rpc_operation_failed",

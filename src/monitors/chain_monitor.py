@@ -1,9 +1,11 @@
 """Chain monitor for orchestrating block processing and transaction analysis"""
 
 import asyncio
+import time
+from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Callable, Coroutine, Dict, Optional
 
 import structlog
 
@@ -12,6 +14,7 @@ from src.database.manager import DatabaseManager
 from src.database.models import ArbitrageTransaction
 from src.detectors.profit_calculator import ProfitCalculator
 from src.detectors.transaction_analyzer import TransactionAnalyzer
+from src.monitoring import metrics
 
 logger = structlog.get_logger()
 
@@ -35,6 +38,7 @@ class ChainMonitor:
         transaction_analyzer: TransactionAnalyzer,
         profit_calculator: ProfitCalculator,
         database_manager: DatabaseManager,
+        broadcast_callback: Optional[Callable[[Dict[str, Any]], Coroutine]] = None,
     ):
         """
         Initialize chain monitor.
@@ -44,11 +48,13 @@ class ChainMonitor:
             transaction_analyzer: TransactionAnalyzer for detecting arbitrage
             profit_calculator: ProfitCalculator for profit calculations
             database_manager: DatabaseManager for data persistence
+            broadcast_callback: Optional callback for broadcasting transactions via WebSocket
         """
         self.chain_connector = chain_connector
         self.transaction_analyzer = transaction_analyzer
         self.profit_calculator = profit_calculator
         self.database_manager = database_manager
+        self.broadcast_callback = broadcast_callback
         
         self.chain_name = chain_connector.chain_name
         self.chain_id = chain_connector.chain_id
@@ -116,6 +122,9 @@ class ChainMonitor:
                     # Process new blocks
                     if latest_block > self.last_synced_block:
                         blocks_behind = latest_block - self.last_synced_block
+                        
+                        # Update blocks_behind metric
+                        metrics.chain_blocks_behind.labels(chain=self.chain_name).set(blocks_behind)
                         
                         self._logger.debug(
                             "new_blocks_detected",
@@ -289,6 +298,13 @@ class ChainMonitor:
                 tx_data,
             )
             
+            # Update metrics
+            metrics.transactions_detected.labels(chain=self.chain_name).inc()
+            if profit_data and profit_data.net_profit_usd:
+                metrics.total_profit_detected_usd.labels(chain=self.chain_name).inc(
+                    float(profit_data.net_profit_usd)
+                )
+            
             self._logger.info(
                 "arbitrage_transaction_processed",
                 tx_hash=tx_hash,
@@ -297,6 +313,18 @@ class ChainMonitor:
                 strategy=strategy,
                 profit_usd=float(profit_data.net_profit_usd) if profit_data else 0.0,
             )
+            
+            # Broadcast transaction via WebSocket if callback is available
+            if self.broadcast_callback:
+                try:
+                    transaction_data = asdict(arb_transaction)
+                    await self.broadcast_callback(transaction_data)
+                except Exception as e:
+                    self._logger.error(
+                        "failed_to_broadcast_transaction",
+                        tx_hash=tx_hash,
+                        error=str(e),
+                    )
         
         except asyncio.CancelledError:
             raise

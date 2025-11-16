@@ -212,14 +212,14 @@
     - Store aggregated data in chain_stats table
     - _Requirements: 11.5, 11.6_
 
-  - [ ]* 9.4 Write viability analysis tests
+  - [x] 9.4 Write viability analysis tests
     - Test small opportunity classification
     - Test capture rate calculation
     - Test competition level tracking
     - _Requirements: 11.1-11.7_
 
-- [ ] 10. Implement REST API with FastAPI
-  - [ ] 10.1 Create FastAPI application with authentication
+- [x] 10. Implement REST API with FastAPI
+  - [x] 10.1 Create FastAPI application with authentication
     - Create FastAPI app in src/api/app.py
     - Set up CORS middleware with allowed origins
     - Implement API key authentication dependency via X-API-Key header
@@ -227,14 +227,14 @@
     - Configure OpenAPI documentation at /docs
     - _Requirements: 7.8, 13.1, 13.2_
 
-  - [ ] 10.2 Implement chain status endpoint
+  - [x] 10.2 Implement chain status endpoint
     - Create GET /api/v1/chains endpoint in src/api/routes/chains.py
     - Query chains table for status information
     - Return list of chains with status, last_synced_block, blocks_behind, uptime_pct
     - Use Pydantic models for response validation
     - _Requirements: 7.1_
 
-  - [ ] 10.3 Implement opportunities endpoint
+  - [x] 10.3 Implement opportunities endpoint
     - Create GET /api/v1/opportunities endpoint in src/api/routes/opportunities.py
     - Use DatabaseManager.get_opportunities() with OpportunityFilters
     - Support filtering by chain_id, min_profit, max_profit, captured
@@ -242,7 +242,7 @@
     - Return opportunities with all fields including capture status
     - _Requirements: 7.2, 7.6_
 
-  - [ ] 10.4 Implement transactions endpoint
+  - [x] 10.4 Implement transactions endpoint
     - Create GET /api/v1/transactions endpoint in src/api/routes/transactions.py
     - Use DatabaseManager.get_transactions() with TransactionFilters
     - Support filtering by chain_id, from_address, min_profit, min_swaps, strategy
@@ -250,7 +250,7 @@
     - Return transactions with profit, gas cost, pools involved, tokens involved
     - _Requirements: 7.2, 7.6_
 
-  - [ ] 10.5 Implement arbitrageurs endpoint
+  - [x] 10.5 Implement arbitrageurs endpoint
     - Create GET /api/v1/arbitrageurs endpoint in src/api/routes/arbitrageurs.py
     - Use DatabaseManager.get_arbitrageurs() with ArbitrageurFilters
     - Support filtering by chain_id, min_transactions, sort_by, sort_order
@@ -258,7 +258,7 @@
     - Return arbitrageur profiles with success rate, total profit, preferred strategy
     - _Requirements: 7.2, 7.6_
 
-  - [ ] 10.6 Implement statistics endpoint
+  - [x] 10.6 Implement statistics endpoint
     - Create GET /api/v1/stats endpoint in src/api/routes/stats.py
     - Query chain_stats table for aggregated statistics
     - Support filtering by chain_id and time period (1h, 24h, 7d, 30d)
@@ -267,22 +267,22 @@
     - Include gas statistics
     - _Requirements: 7.2, 7.6, 7.7_
 
-  - [ ] 10.7 Add health check endpoint
+  - [x] 10.7 Add health check endpoint
     - Create GET /api/v1/health endpoint in src/api/routes/health.py
     - Check database connectivity using DatabaseManager.pool
     - Return 200 if healthy with status details, 503 if unhealthy
     - Include database pool size and free connections in response
     - _Requirements: 1.7, 12.1-12.5_
 
-  - [ ]* 10.8 Write API integration tests
+  - [x] 10.8 Write API integration tests
     - Test authentication with valid and invalid API keys
     - Test all endpoints with various filters
     - Test pagination behavior
     - Test error responses
     - _Requirements: 7.1-7.8, 13.1-13.7_
 
-- [ ] 11. Implement WebSocket streaming (OPTIONAL - can be deferred)
-  - [ ] 11.1 Create WebSocket server with subscription management
+- [x] 11. Implement WebSocket streaming (OPTIONAL - can be deferred)
+  - [x] 11.1 Create WebSocket server with subscription management
     - Implement WebSocket endpoint at /ws/v1/stream in src/api/websocket.py
     - Handle connection, disconnection, and heartbeat using FastAPI WebSocket
     - Support subscribe/unsubscribe messages with filters
@@ -290,47 +290,47 @@
     - Limit to 100 concurrent connections
     - _Requirements: 8.1, 8.7_
 
-  - [ ] 11.2 Implement opportunity broadcasting
+  - [x] 11.2 Implement opportunity broadcasting
     - When opportunity detected in PoolScanner, broadcast to subscribed clients
     - Filter broadcasts based on client subscription filters (chain, profit range)
     - Use asyncio queues for message passing
     - _Requirements: 8.2, 8.4_
 
-  - [ ] 11.3 Implement transaction broadcasting
+  - [x] 11.3 Implement transaction broadcasting
     - When arbitrage transaction detected in ChainMonitor, broadcast to subscribed clients
     - Filter broadcasts based on client subscription filters (chain, min_swaps)
     - Use asyncio queues for message passing
     - _Requirements: 8.3, 8.5, 8.6_
 
-  - [ ]* 11.4 Write WebSocket integration tests
+  - [x] 11.4 Write WebSocket integration tests
     - Test connection handling and heartbeat
     - Test subscription filtering
     - Test broadcast delivery
     - Test connection limit enforcement
     - _Requirements: 8.1-8.7_
 
-- [ ] 12. Implement caching layer with Redis (OPTIONAL - can be deferred)
-  - [ ] 12.1 Create cache manager
+- [x] 12. Implement caching layer with Redis (OPTIONAL - can be deferred)
+  - [x] 12.1 Create cache manager
     - Implement CacheManager class in src/cache/manager.py with Redis connection
     - Add cache_opportunity method with 5-minute TTL
     - Add get_cached_stats method
     - Add invalidate_cache method for pattern-based invalidation
     - _Requirements: 7.7_
 
-  - [ ] 12.2 Integrate caching with API endpoints
+  - [x] 12.2 Integrate caching with API endpoints
     - Cache recent opportunities (last 1000 per chain)
     - Cache aggregated statistics (60 second TTL)
     - Cache arbitrageur leaderboards (300 second TTL)
     - _Requirements: 7.6, 7.7_
 
-  - [ ]* 12.3 Write cache integration tests
+  - [x] 12.3 Write cache integration tests
     - Test cache hit/miss behavior
     - Test TTL expiration
     - Test cache invalidation
     - _Requirements: 7.6, 7.7_
 
-- [ ] 13. Implement monitoring and alerting (OPTIONAL - can be deferred)
-  - [ ] 13.1 Set up Prometheus metrics
+- [x] 13. Implement monitoring and alerting (OPTIONAL - can be deferred)
+  - [x] 13.1 Set up Prometheus metrics
     - Create metrics module in src/monitoring/metrics.py
     - Create metrics for chain health (blocks_behind, rpc_latency, rpc_errors)
     - Create metrics for detection performance (opportunities_detected, transactions_detected)

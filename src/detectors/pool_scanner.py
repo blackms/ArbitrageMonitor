@@ -2,18 +2,20 @@
 
 import asyncio
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple
 
 import structlog
 from web3 import Web3
 
+from src.cache.manager import CacheManager
 from src.chains.connector import ChainConnector
 from src.config.models import ChainConfig
 from src.database.manager import DatabaseManager
 from src.database.models import Opportunity
+from src.monitoring import metrics
 
 logger = structlog.get_logger()
 
@@ -71,11 +73,13 @@ class PoolScanner:
         chain_connector: ChainConnector,
         config: ChainConfig,
         database_manager: Optional[DatabaseManager] = None,
+        cache_manager: Optional[CacheManager] = None,
         scan_interval_seconds: float = 3.0,
         imbalance_threshold_pct: float = 5.0,
         swap_fee_pct: float = 0.3,
         small_opp_min_usd: float = 10000.0,
         small_opp_max_usd: float = 100000.0,
+        broadcast_callback: Optional[Callable[[Dict[str, Any]], Coroutine]] = None,
     ):
         """
         Initialize pool scanner.
@@ -84,20 +88,24 @@ class PoolScanner:
             chain_connector: Chain connector for RPC calls
             config: Chain configuration with pool addresses
             database_manager: Optional database manager for persisting opportunities
+            cache_manager: Optional cache manager for caching opportunities
             scan_interval_seconds: Seconds between pool scans (default 3 for BSC, 2 for Polygon)
             imbalance_threshold_pct: Minimum imbalance percentage to detect (default 5%)
             swap_fee_pct: DEX swap fee percentage (default 0.3%)
             small_opp_min_usd: Minimum profit for small opportunity classification (default $10K)
             small_opp_max_usd: Maximum profit for small opportunity classification (default $100K)
+            broadcast_callback: Optional callback for broadcasting opportunities via WebSocket
         """
         self.chain_connector = chain_connector
         self.config = config
         self.database_manager = database_manager
+        self.cache_manager = cache_manager
         self.scan_interval_seconds = scan_interval_seconds
         self.imbalance_threshold_pct = Decimal(str(imbalance_threshold_pct))
         self.swap_fee_pct = Decimal(str(swap_fee_pct))
         self.small_opp_min_usd = Decimal(str(small_opp_min_usd))
         self.small_opp_max_usd = Decimal(str(small_opp_max_usd))
+        self.broadcast_callback = broadcast_callback
         
         self.chain_name = config.name
         self.chain_id = config.chain_id
@@ -305,6 +313,9 @@ class PoolScanner:
                 if is_small:
                     self._small_opportunity_count += 1
                 
+                # Update metrics
+                metrics.opportunities_detected.labels(chain=self.chain_name).inc()
+                
                 self._logger.info(
                     "opportunity_detected",
                     pool_name=pool_name,
@@ -318,10 +329,34 @@ class PoolScanner:
                 # Save to database if manager is available
                 if self.database_manager:
                     try:
-                        await self.database_manager.save_opportunity(opportunity)
+                        opportunity_id = await self.database_manager.save_opportunity(opportunity)
+                        opportunity.id = opportunity_id
+                        
+                        # Cache the opportunity if cache manager is available
+                        if self.cache_manager:
+                            try:
+                                await self.cache_manager.cache_opportunity(opportunity, ttl=300)
+                            except Exception as cache_error:
+                                self._logger.warning(
+                                    "failed_to_cache_opportunity",
+                                    pool_name=pool_name,
+                                    error=str(cache_error),
+                                )
                     except Exception as e:
                         self._logger.error(
                             "failed_to_save_opportunity",
+                            pool_name=pool_name,
+                            error=str(e),
+                        )
+                
+                # Broadcast opportunity via WebSocket if callback is available
+                if self.broadcast_callback:
+                    try:
+                        opportunity_data = asdict(opportunity)
+                        await self.broadcast_callback(opportunity_data)
+                    except Exception as e:
+                        self._logger.error(
+                            "failed_to_broadcast_opportunity",
                             pool_name=pool_name,
                             error=str(e),
                         )

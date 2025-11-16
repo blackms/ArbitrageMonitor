@@ -1,6 +1,7 @@
 """Database manager with connection pooling and retry logic"""
 
 import asyncio
+import time
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional
@@ -17,6 +18,7 @@ from src.database.models import (
     TransactionFilters,
 )
 from src.database.schema import get_schema_sql
+from src.monitoring import metrics
 
 logger = structlog.get_logger()
 
@@ -61,6 +63,8 @@ class DatabaseManager:
                 min_pool_size=self.min_pool_size,
                 max_pool_size=self.max_pool_size,
             )
+            # Update connection pool metrics
+            await self._update_pool_metrics()
         except Exception as e:
             self._logger.error("database_connection_failed", error=str(e))
             raise
@@ -98,15 +102,27 @@ class DatabaseManager:
         """
         max_attempts = 3
         base_delay = 0.5  # seconds
+        operation_name = kwargs.pop('_operation_name', operation.__name__)
 
         for attempt in range(1, max_attempts + 1):
+            start_time = time.time()
             try:
-                return await operation(*args, **kwargs)
+                result = await operation(*args, **kwargs)
+                # Record successful operation latency
+                latency = time.time() - start_time
+                metrics.db_query_latency.labels(operation=operation_name).observe(latency)
+                # Update pool metrics after operation
+                await self._update_pool_metrics()
+                return result
             except (asyncpg.PostgresError, asyncpg.InterfaceError) as e:
+                # Record error
+                error_type = type(e).__name__
+                metrics.db_errors.labels(operation=operation_name, error_type=error_type).inc()
+                
                 if attempt == max_attempts:
                     self._logger.error(
                         "database_operation_failed",
-                        operation=operation.__name__,
+                        operation=operation_name,
                         attempts=attempt,
                         error=str(e),
                     )
@@ -115,7 +131,7 @@ class DatabaseManager:
                 delay = base_delay * (2 ** (attempt - 1))
                 self._logger.warning(
                     "database_operation_retry",
-                    operation=operation.__name__,
+                    operation=operation_name,
                     attempt=attempt,
                     delay=delay,
                     error=str(e),
@@ -162,7 +178,7 @@ class DatabaseManager:
                 )
                 return row["id"]
 
-        opportunity_id = await self._retry_operation(_save)
+        opportunity_id = await self._retry_operation(_save, _operation_name='save_opportunity')
         self._logger.info(
             "opportunity_saved",
             opportunity_id=opportunity_id,
@@ -218,7 +234,7 @@ class DatabaseManager:
                 )
                 return row["id"]
 
-        transaction_id = await self._retry_operation(_save)
+        transaction_id = await self._retry_operation(_save, _operation_name='save_transaction')
         self._logger.info(
             "transaction_saved",
             transaction_id=transaction_id,
@@ -338,7 +354,7 @@ class DatabaseManager:
                         False,  # contract_address - would need to check if address is contract
                     )
 
-        await self._retry_operation(_update)
+        await self._retry_operation(_update, _operation_name='update_arbitrageur')
         self._logger.info(
             "arbitrageur_updated", address=address, chain_id=chain_id
         )
@@ -358,58 +374,69 @@ class DatabaseManager:
         if not self.pool:
             raise RuntimeError("Database pool not initialized")
 
-        query = "SELECT * FROM opportunities WHERE 1=1"
-        params = []
-        param_count = 1
+        start_time = time.time()
+        try:
+            query = "SELECT * FROM opportunities WHERE 1=1"
+            params = []
+            param_count = 1
 
-        if filters.chain_id is not None:
-            query += f" AND chain_id = ${param_count}"
-            params.append(filters.chain_id)
-            param_count += 1
+            if filters.chain_id is not None:
+                query += f" AND chain_id = ${param_count}"
+                params.append(filters.chain_id)
+                param_count += 1
 
-        if filters.min_profit is not None:
-            query += f" AND profit_usd >= ${param_count}"
-            params.append(filters.min_profit)
-            param_count += 1
+            if filters.min_profit is not None:
+                query += f" AND profit_usd >= ${param_count}"
+                params.append(filters.min_profit)
+                param_count += 1
 
-        if filters.max_profit is not None:
-            query += f" AND profit_usd <= ${param_count}"
-            params.append(filters.max_profit)
-            param_count += 1
+            if filters.max_profit is not None:
+                query += f" AND profit_usd <= ${param_count}"
+                params.append(filters.max_profit)
+                param_count += 1
 
-        if filters.captured is not None:
-            query += f" AND captured = ${param_count}"
-            params.append(filters.captured)
-            param_count += 1
+            if filters.captured is not None:
+                query += f" AND captured = ${param_count}"
+                params.append(filters.captured)
+                param_count += 1
 
-        query += " ORDER BY detected_at DESC"
-        query += f" LIMIT ${param_count} OFFSET ${param_count + 1}"
-        params.extend([filters.limit, filters.offset])
+            query += " ORDER BY detected_at DESC"
+            query += f" LIMIT ${param_count} OFFSET ${param_count + 1}"
+            params.extend([filters.limit, filters.offset])
 
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch(query, *params)
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, *params)
 
-        opportunities = [
-            Opportunity(
-                id=row["id"],
-                chain_id=row["chain_id"],
-                pool_name=row["pool_name"],
-                pool_address=row["pool_address"],
-                imbalance_pct=row["imbalance_pct"],
-                profit_usd=row["profit_usd"],
-                profit_native=row["profit_native"],
-                reserve0=row["reserve0"],
-                reserve1=row["reserve1"],
-                block_number=row["block_number"],
-                detected_at=row["detected_at"],
-                captured=row["captured"],
-                captured_by=row["captured_by"],
-                capture_tx_hash=row["capture_tx_hash"],
-            )
-            for row in rows
-        ]
+            opportunities = [
+                Opportunity(
+                    id=row["id"],
+                    chain_id=row["chain_id"],
+                    pool_name=row["pool_name"],
+                    pool_address=row["pool_address"],
+                    imbalance_pct=row["imbalance_pct"],
+                    profit_usd=row["profit_usd"],
+                    profit_native=row["profit_native"],
+                    reserve0=row["reserve0"],
+                    reserve1=row["reserve1"],
+                    block_number=row["block_number"],
+                    detected_at=row["detected_at"],
+                    captured=row["captured"],
+                    captured_by=row["captured_by"],
+                    capture_tx_hash=row["capture_tx_hash"],
+                )
+                for row in rows
+            ]
 
-        return opportunities
+            # Record query latency
+            latency = time.time() - start_time
+            metrics.db_query_latency.labels(operation='get_opportunities').observe(latency)
+            await self._update_pool_metrics()
+
+            return opportunities
+        except Exception as e:
+            error_type = type(e).__name__
+            metrics.db_errors.labels(operation='get_opportunities', error_type=error_type).inc()
+            raise
 
     async def get_transactions(
         self, filters: TransactionFilters
@@ -426,66 +453,77 @@ class DatabaseManager:
         if not self.pool:
             raise RuntimeError("Database pool not initialized")
 
-        query = "SELECT * FROM transactions WHERE 1=1"
-        params = []
-        param_count = 1
+        start_time = time.time()
+        try:
+            query = "SELECT * FROM transactions WHERE 1=1"
+            params = []
+            param_count = 1
 
-        if filters.chain_id is not None:
-            query += f" AND chain_id = ${param_count}"
-            params.append(filters.chain_id)
-            param_count += 1
+            if filters.chain_id is not None:
+                query += f" AND chain_id = ${param_count}"
+                params.append(filters.chain_id)
+                param_count += 1
 
-        if filters.from_address is not None:
-            query += f" AND from_address = ${param_count}"
-            params.append(filters.from_address)
-            param_count += 1
+            if filters.from_address is not None:
+                query += f" AND from_address = ${param_count}"
+                params.append(filters.from_address)
+                param_count += 1
 
-        if filters.min_profit is not None:
-            query += f" AND profit_net_usd >= ${param_count}"
-            params.append(filters.min_profit)
-            param_count += 1
+            if filters.min_profit is not None:
+                query += f" AND profit_net_usd >= ${param_count}"
+                params.append(filters.min_profit)
+                param_count += 1
 
-        if filters.min_swaps is not None:
-            query += f" AND swap_count >= ${param_count}"
-            params.append(filters.min_swaps)
-            param_count += 1
+            if filters.min_swaps is not None:
+                query += f" AND swap_count >= ${param_count}"
+                params.append(filters.min_swaps)
+                param_count += 1
 
-        if filters.strategy is not None:
-            query += f" AND strategy = ${param_count}"
-            params.append(filters.strategy)
-            param_count += 1
+            if filters.strategy is not None:
+                query += f" AND strategy = ${param_count}"
+                params.append(filters.strategy)
+                param_count += 1
 
-        query += " ORDER BY detected_at DESC"
-        query += f" LIMIT ${param_count} OFFSET ${param_count + 1}"
-        params.extend([filters.limit, filters.offset])
+            query += " ORDER BY detected_at DESC"
+            query += f" LIMIT ${param_count} OFFSET ${param_count + 1}"
+            params.extend([filters.limit, filters.offset])
 
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch(query, *params)
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, *params)
 
-        transactions = [
-            ArbitrageTransaction(
-                id=row["id"],
-                chain_id=row["chain_id"],
-                tx_hash=row["tx_hash"],
-                from_address=row["from_address"],
-                block_number=row["block_number"],
-                block_timestamp=row["block_timestamp"],
-                gas_price_gwei=row["gas_price_gwei"],
-                gas_used=row["gas_used"],
-                gas_cost_native=row["gas_cost_native"],
-                gas_cost_usd=row["gas_cost_usd"],
-                swap_count=row["swap_count"],
-                strategy=row["strategy"],
-                profit_gross_usd=row["profit_gross_usd"],
-                profit_net_usd=row["profit_net_usd"],
-                pools_involved=row["pools_involved"],
-                tokens_involved=row["tokens_involved"],
-                detected_at=row["detected_at"],
-            )
-            for row in rows
-        ]
+            transactions = [
+                ArbitrageTransaction(
+                    id=row["id"],
+                    chain_id=row["chain_id"],
+                    tx_hash=row["tx_hash"],
+                    from_address=row["from_address"],
+                    block_number=row["block_number"],
+                    block_timestamp=row["block_timestamp"],
+                    gas_price_gwei=row["gas_price_gwei"],
+                    gas_used=row["gas_used"],
+                    gas_cost_native=row["gas_cost_native"],
+                    gas_cost_usd=row["gas_cost_usd"],
+                    swap_count=row["swap_count"],
+                    strategy=row["strategy"],
+                    profit_gross_usd=row["profit_gross_usd"],
+                    profit_net_usd=row["profit_net_usd"],
+                    pools_involved=row["pools_involved"],
+                    tokens_involved=row["tokens_involved"],
+                    detected_at=row["detected_at"],
+                )
+                for row in rows
+            ]
 
-        return transactions
+            # Record query latency
+            latency = time.time() - start_time
+            metrics.db_query_latency.labels(operation='get_transactions').observe(latency)
+            await self._update_pool_metrics()
+
+            return transactions
+        except Exception as e:
+            error_type = type(e).__name__
+            metrics.db_errors.labels(operation='get_transactions', error_type=error_type).inc()
+            raise
 
     async def get_arbitrageurs(
         self, filters: ArbitrageurFilters
@@ -502,62 +540,73 @@ class DatabaseManager:
         if not self.pool:
             raise RuntimeError("Database pool not initialized")
 
-        query = "SELECT * FROM arbitrageurs WHERE 1=1"
-        params = []
-        param_count = 1
+        start_time = time.time()
+        try:
+            query = "SELECT * FROM arbitrageurs WHERE 1=1"
+            params = []
+            param_count = 1
 
-        if filters.chain_id is not None:
-            query += f" AND chain_id = ${param_count}"
-            params.append(filters.chain_id)
-            param_count += 1
+            if filters.chain_id is not None:
+                query += f" AND chain_id = ${param_count}"
+                params.append(filters.chain_id)
+                param_count += 1
 
-        if filters.min_transactions is not None:
-            query += f" AND total_transactions >= ${param_count}"
-            params.append(filters.min_transactions)
-            param_count += 1
+            if filters.min_transactions is not None:
+                query += f" AND total_transactions >= ${param_count}"
+                params.append(filters.min_transactions)
+                param_count += 1
 
-        # Validate sort_by to prevent SQL injection
-        allowed_sort_fields = [
-            "total_profit_usd",
-            "total_transactions",
-            "last_seen",
-            "total_gas_spent_usd",
-        ]
-        sort_by = (
-            filters.sort_by
-            if filters.sort_by in allowed_sort_fields
-            else "total_profit_usd"
-        )
-        sort_order = "DESC" if filters.sort_order.upper() == "DESC" else "ASC"
-
-        query += f" ORDER BY {sort_by} {sort_order}"
-        query += f" LIMIT ${param_count} OFFSET ${param_count + 1}"
-        params.extend([filters.limit, filters.offset])
-
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch(query, *params)
-
-        arbitrageurs = [
-            Arbitrageur(
-                id=row["id"],
-                address=row["address"],
-                chain_id=row["chain_id"],
-                first_seen=row["first_seen"],
-                last_seen=row["last_seen"],
-                total_transactions=row["total_transactions"],
-                successful_transactions=row["successful_transactions"],
-                failed_transactions=row["failed_transactions"],
-                total_profit_usd=row["total_profit_usd"],
-                total_gas_spent_usd=row["total_gas_spent_usd"],
-                avg_gas_price_gwei=row["avg_gas_price_gwei"],
-                preferred_strategy=row["preferred_strategy"],
-                is_bot=row["is_bot"],
-                contract_address=row["contract_address"],
+            # Validate sort_by to prevent SQL injection
+            allowed_sort_fields = [
+                "total_profit_usd",
+                "total_transactions",
+                "last_seen",
+                "total_gas_spent_usd",
+            ]
+            sort_by = (
+                filters.sort_by
+                if filters.sort_by in allowed_sort_fields
+                else "total_profit_usd"
             )
-            for row in rows
-        ]
+            sort_order = "DESC" if filters.sort_order.upper() == "DESC" else "ASC"
 
-        return arbitrageurs
+            query += f" ORDER BY {sort_by} {sort_order}"
+            query += f" LIMIT ${param_count} OFFSET ${param_count + 1}"
+            params.extend([filters.limit, filters.offset])
+
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, *params)
+
+            arbitrageurs = [
+                Arbitrageur(
+                    id=row["id"],
+                    address=row["address"],
+                    chain_id=row["chain_id"],
+                    first_seen=row["first_seen"],
+                    last_seen=row["last_seen"],
+                    total_transactions=row["total_transactions"],
+                    successful_transactions=row["successful_transactions"],
+                    failed_transactions=row["failed_transactions"],
+                    total_profit_usd=row["total_profit_usd"],
+                    total_gas_spent_usd=row["total_gas_spent_usd"],
+                    avg_gas_price_gwei=row["avg_gas_price_gwei"],
+                    preferred_strategy=row["preferred_strategy"],
+                    is_bot=row["is_bot"],
+                    contract_address=row["contract_address"],
+                )
+                for row in rows
+            ]
+
+            # Record query latency
+            latency = time.time() - start_time
+            metrics.db_query_latency.labels(operation='get_arbitrageurs').observe(latency)
+            await self._update_pool_metrics()
+
+            return arbitrageurs
+        except Exception as e:
+            error_type = type(e).__name__
+            metrics.db_errors.labels(operation='get_arbitrageurs', error_type=error_type).inc()
+            raise
 
     async def get_pool_size(self) -> int:
         """Get current connection pool size"""
@@ -570,3 +619,11 @@ class DatabaseManager:
         if not self.pool:
             return 0
         return self.pool.get_idle_size()
+
+    async def _update_pool_metrics(self) -> None:
+        """Update database connection pool metrics"""
+        if self.pool:
+            pool_size = self.pool.get_size()
+            free_size = self.pool.get_idle_size()
+            metrics.db_connection_pool_size.set(pool_size)
+            metrics.db_connection_pool_free.set(free_size)
