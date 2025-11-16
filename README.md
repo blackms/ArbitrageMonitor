@@ -40,7 +40,8 @@ Production-ready system to detect, track, and analyze real multi-hop arbitrage o
 
 ### API & Monitoring
 - REST API and WebSocket streaming
-- Comprehensive monitoring and alerting
+- Prometheus metrics for comprehensive monitoring
+- Real-time alerting and performance tracking
 - Structured logging with contextual information
 
 ## Project Structure
@@ -946,6 +947,500 @@ if imbalance_data:
 ### Configuration Options
 
 The pool scanner supports flexible configuration:
+
+## Prometheus Metrics
+
+The system includes comprehensive Prometheus metrics for monitoring health, performance, and business metrics across all components.
+
+### Features
+
+- **Chain Health Monitoring**: Track RPC latency, errors, and block synchronization
+- **Detection Performance**: Monitor opportunity and transaction detection rates
+- **Database Performance**: Track query latency, connection pool usage, and errors
+- **API Performance**: Monitor request rates, latency, and error rates
+- **WebSocket Metrics**: Track active connections and message throughput
+- **Business Metrics**: Monitor profit detection, active arbitrageurs, and opportunity distribution
+
+### Metrics Endpoint
+
+The metrics are exposed at `/metrics` endpoint in Prometheus text format:
+
+```python
+from src.api.app import create_app
+from src.database.manager import DatabaseManager
+from src.config.models import Settings
+
+# Create app with metrics endpoint
+settings = Settings()
+db_manager = DatabaseManager(settings.database_url)
+await db_manager.connect()
+
+app = create_app(settings, db_manager)
+
+# Metrics available at: http://localhost:8000/metrics
+```
+
+### Available Metrics
+
+#### Chain Health Metrics
+
+**chain_blocks_behind** (Gauge)
+- Description: Number of blocks behind the latest block
+- Labels: `chain` (BSC, Polygon)
+- Usage: Monitor synchronization lag
+
+```python
+from src.monitoring import metrics
+
+# Update blocks behind
+metrics.chain_blocks_behind.labels(chain="BSC").set(5)
+```
+
+**chain_rpc_latency_seconds** (Histogram)
+- Description: RPC call latency in seconds
+- Labels: `chain`, `endpoint`, `method`
+- Buckets: 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0
+- Usage: Track RPC performance and identify slow endpoints
+
+```python
+# Record RPC latency
+metrics.chain_rpc_latency.labels(
+    chain="BSC",
+    endpoint="https://bsc-dataseed.bnbchain.org",
+    method="get_block"
+).observe(0.3)
+```
+
+**chain_rpc_errors_total** (Counter)
+- Description: Total number of RPC errors
+- Labels: `chain`, `error_type`
+- Usage: Track RPC failures and error patterns
+
+```python
+# Increment error counter
+metrics.chain_rpc_errors.labels(
+    chain="Polygon",
+    error_type="TimeoutError"
+).inc()
+```
+
+#### Detection Performance Metrics
+
+**opportunities_detected_total** (Counter)
+- Description: Total number of opportunities detected
+- Labels: `chain`
+- Usage: Track opportunity detection rate
+
+```python
+# Increment when opportunity detected
+metrics.opportunities_detected.labels(chain="BSC").inc()
+```
+
+**transactions_detected_total** (Counter)
+- Description: Total number of arbitrage transactions detected
+- Labels: `chain`
+- Usage: Track transaction detection rate
+
+```python
+# Increment when transaction detected
+metrics.transactions_detected.labels(chain="Polygon").inc()
+```
+
+**detection_latency_seconds** (Histogram)
+- Description: Detection latency in seconds
+- Labels: `chain`, `type` (opportunity, transaction)
+- Buckets: 0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0
+- Usage: Monitor detection performance
+
+```python
+# Record detection latency
+metrics.detection_latency.labels(
+    chain="BSC",
+    type="opportunity"
+).observe(1.5)
+```
+
+#### Database Performance Metrics
+
+**db_query_latency_seconds** (Histogram)
+- Description: Database query latency in seconds
+- Labels: `operation` (save_opportunity, get_transactions, etc.)
+- Buckets: 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0
+- Usage: Monitor database performance
+
+```python
+# Record query latency
+metrics.db_query_latency.labels(
+    operation="save_opportunity"
+).observe(0.05)
+```
+
+**db_connection_pool_size** (Gauge)
+- Description: Number of active database connections
+- Usage: Monitor connection pool usage
+
+```python
+# Update pool size
+metrics.db_connection_pool_size.set(20)
+```
+
+**db_connection_pool_free** (Gauge)
+- Description: Number of free database connections
+- Usage: Monitor available connections
+
+```python
+# Update free connections
+metrics.db_connection_pool_free.set(15)
+```
+
+**db_errors_total** (Counter)
+- Description: Total number of database errors
+- Labels: `operation`, `error_type`
+- Usage: Track database failures
+
+```python
+# Increment error counter
+metrics.db_errors.labels(
+    operation="save_transaction",
+    error_type="ConnectionError"
+).inc()
+```
+
+#### API Performance Metrics
+
+**api_requests_total** (Counter)
+- Description: Total number of API requests
+- Labels: `endpoint`, `method`, `status`
+- Usage: Track API usage and response codes
+
+```python
+# Increment request counter
+metrics.api_requests_total.labels(
+    endpoint="/api/v1/opportunities",
+    method="GET",
+    status=200
+).inc()
+```
+
+**api_request_latency_seconds** (Histogram)
+- Description: API request latency in seconds
+- Labels: `endpoint`, `method`
+- Buckets: 0.01, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0
+- Usage: Monitor API response times
+
+```python
+# Record API latency
+metrics.api_request_latency.labels(
+    endpoint="/api/v1/transactions",
+    method="GET"
+).observe(0.12)
+```
+
+**api_errors_total** (Counter)
+- Description: Total number of API errors
+- Labels: `endpoint`, `error_type`
+- Usage: Track API failures
+
+```python
+# Increment error counter
+metrics.api_errors.labels(
+    endpoint="/api/v1/stats",
+    error_type="ValidationError"
+).inc()
+```
+
+#### WebSocket Metrics
+
+**websocket_connections_active** (Gauge)
+- Description: Number of active WebSocket connections
+- Usage: Monitor real-time connection count
+
+```python
+# Update active connections
+metrics.websocket_connections_active.set(25)
+```
+
+**websocket_messages_sent_total** (Counter)
+- Description: Total number of WebSocket messages sent
+- Labels: `message_type` (opportunity, transaction)
+- Usage: Track message throughput
+
+```python
+# Increment message counter
+metrics.websocket_messages_sent.labels(
+    message_type="opportunity"
+).inc()
+```
+
+#### Business Metrics
+
+**total_profit_detected_usd** (Counter)
+- Description: Cumulative profit detected in USD
+- Labels: `chain`
+- Usage: Track total profit across all arbitrage opportunities
+
+```python
+# Add detected profit
+metrics.total_profit_detected_usd.labels(chain="BSC").inc(1500.50)
+```
+
+**active_arbitrageurs** (Gauge)
+- Description: Number of unique arbitrageurs active in the last hour
+- Labels: `chain`
+- Usage: Monitor market participation
+
+```python
+# Update active arbitrageurs
+metrics.active_arbitrageurs.labels(chain="Polygon").set(42)
+```
+
+**small_opportunities_percentage** (Gauge)
+- Description: Percentage of opportunities classified as small ($10K-$100K)
+- Labels: `chain`
+- Usage: Track small trader viability
+
+```python
+# Update small opportunity percentage
+metrics.small_opportunities_percentage.labels(chain="BSC").set(28.5)
+```
+
+### Integration with Components
+
+Metrics are automatically emitted by various system components:
+
+#### Chain Monitor Integration
+
+```python
+from src.monitors.chain_monitor import ChainMonitor
+from src.monitoring import metrics
+
+# Metrics are automatically emitted during monitoring:
+# - chain_blocks_behind: Updated on each block sync
+# - transactions_detected: Incremented when arbitrage detected
+# - total_profit_detected_usd: Incremented with transaction profit
+```
+
+#### API Integration
+
+```python
+from src.api.app import create_app
+
+# API middleware automatically emits:
+# - api_requests_total: On each request
+# - api_request_latency: Request duration
+# - api_errors: On request failures
+```
+
+#### Database Integration
+
+```python
+from src.database.manager import DatabaseManager
+
+# Database operations emit:
+# - db_query_latency: Query execution time
+# - db_connection_pool_size: Pool size updates
+# - db_connection_pool_free: Available connections
+# - db_errors: Database operation failures
+```
+
+### Prometheus Configuration
+
+Configure Prometheus to scrape the metrics endpoint:
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: 'arbitrage-monitor'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:8000']
+    metrics_path: '/metrics'
+```
+
+### Grafana Dashboards
+
+Create dashboards to visualize key metrics:
+
+**Chain Health Dashboard:**
+- Blocks behind (gauge)
+- RPC latency (graph)
+- RPC error rate (graph)
+
+**Detection Performance Dashboard:**
+- Opportunities detected per minute (graph)
+- Transactions detected per minute (graph)
+- Detection latency percentiles (graph)
+
+**Database Performance Dashboard:**
+- Query latency percentiles (graph)
+- Connection pool usage (gauge)
+- Database error rate (graph)
+
+**API Performance Dashboard:**
+- Request rate by endpoint (graph)
+- Request latency percentiles (graph)
+- Error rate by endpoint (graph)
+
+**Business Metrics Dashboard:**
+- Total profit detected (counter)
+- Active arbitrageurs (gauge)
+- Small opportunity percentage (gauge)
+
+### Alerting Rules
+
+Configure Prometheus alerting rules:
+
+```yaml
+# alerts.yml
+groups:
+  - name: arbitrage_monitor
+    rules:
+      # Chain health alerts
+      - alert: ChainBlocksBehind
+        expr: chain_blocks_behind > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Chain {{ $labels.chain }} is {{ $value }} blocks behind"
+      
+      - alert: HighRPCLatency
+        expr: histogram_quantile(0.95, chain_rpc_latency_seconds_bucket) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High RPC latency on {{ $labels.chain }}"
+      
+      - alert: RPCErrorRate
+        expr: rate(chain_rpc_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High RPC error rate on {{ $labels.chain }}"
+      
+      # Database alerts
+      - alert: HighDatabaseLatency
+        expr: histogram_quantile(0.95, db_query_latency_seconds_bucket) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High database query latency"
+      
+      - alert: LowConnectionPoolAvailability
+        expr: db_connection_pool_free / db_connection_pool_size < 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low database connection pool availability"
+      
+      # API alerts
+      - alert: HighAPIErrorRate
+        expr: rate(api_errors_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High API error rate on {{ $labels.endpoint }}"
+      
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, api_request_latency_seconds_bucket) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency on {{ $labels.endpoint }}"
+```
+
+### Testing
+
+The system includes comprehensive unit tests for metrics:
+
+```bash
+# Run metrics tests
+poetry run pytest tests/test_metrics.py -v
+
+# Test categories:
+# - Metrics emission: Verify metrics are properly emitted
+# - Metrics accuracy: Verify metrics reflect actual operations
+# - Metrics format: Verify Prometheus format compliance
+# - Metrics labels: Verify label handling
+# - Integration scenarios: Test complete workflows
+```
+
+### Monitoring Best Practices
+
+**Key Metrics to Monitor:**
+
+1. **Chain Synchronization**: `chain_blocks_behind` should be < 5
+2. **RPC Health**: `chain_rpc_latency` p95 should be < 1s
+3. **Detection Rate**: `opportunities_detected_total` and `transactions_detected_total` should show steady activity
+4. **Database Performance**: `db_query_latency` p95 should be < 0.5s
+5. **API Performance**: `api_request_latency` p95 should be < 0.5s
+6. **Connection Pool**: `db_connection_pool_free` should be > 20% of pool size
+
+**Alert Priorities:**
+
+- **Critical**: RPC errors, database errors, API errors
+- **Warning**: High latency, blocks behind, low connection pool
+- **Info**: Detection rates, profit tracking, arbitrageur activity
+
+### Production Deployment
+
+For production deployments:
+
+```bash
+# Environment variables
+PROMETHEUS_ENABLED=true
+METRICS_PORT=8000
+
+# Docker Compose
+services:
+  arbitrage-monitor:
+    ports:
+      - "8000:8000"
+    environment:
+      - PROMETHEUS_ENABLED=true
+  
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+  
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+```
+
+### Metrics Output Example
+
+```
+# HELP chain_blocks_behind Number of blocks behind the latest block
+# TYPE chain_blocks_behind gauge
+chain_blocks_behind{chain="BSC"} 2.0
+chain_blocks_behind{chain="Polygon"} 1.0
+
+# HELP opportunities_detected_total Total number of opportunities detected
+# TYPE opportunities_detected_total counter
+opportunities_detected_total{chain="BSC"} 1523.0
+opportunities_detected_total{chain="Polygon"} 892.0
+
+# HELP api_request_latency_seconds API request latency in seconds
+# TYPE api_request_latency_seconds histogram
+api_request_latency_seconds_bucket{endpoint="/api/v1/opportunities",method="GET",le="0.01"} 45.0
+api_request_latency_seconds_bucket{endpoint="/api/v1/opportunities",method="GET",le="0.05"} 120.0
+api_request_latency_seconds_bucket{endpoint="/api/v1/opportunities",method="GET",le="+Inf"} 150.0
+api_request_latency_seconds_sum{endpoint="/api/v1/opportunities",method="GET"} 5.2
+api_request_latency_seconds_count{endpoint="/api/v1/opportunities",method="GET"} 150.0
+```
 
 - **scan_interval_seconds**: Time between scans (default 3.0 for BSC, 2.0 for Polygon)
 - **imbalance_threshold_pct**: Minimum imbalance to detect (default 5.0%)

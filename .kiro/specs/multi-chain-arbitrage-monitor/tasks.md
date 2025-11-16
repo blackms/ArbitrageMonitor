@@ -339,13 +339,13 @@
     - Expose metrics endpoint at /metrics in FastAPI app
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
 
-  - [ ]* 13.2 Write monitoring tests
+  - [x] 13.2 Write monitoring tests
     - Test metric emission
     - Test metric accuracy
     - _Requirements: 12.1-12.9_
 
-- [ ] 14. Implement data retention and archival (OPTIONAL - can be deferred)
-  - [ ] 14.1 Create data retention service
+- [x] 14. Implement data retention and archival (OPTIONAL - can be deferred)
+  - [x] 14.1 Create data retention service
     - Implement DataRetentionService class in src/services/retention.py
     - Implement scheduled job to delete opportunities older than 30 days
     - Implement scheduled job to archive transactions older than 90 days
@@ -353,7 +353,7 @@
     - Maintain referential integrity during deletion/archival
     - _Requirements: 15.1, 15.2, 15.5, 15.6_
 
-  - [ ]* 14.2 Write data retention tests
+  - [x] 14.2 Write data retention tests
     - Test opportunity deletion after 30 days
     - Test transaction archival after 90 days
     - _Requirements: 15.1-15.6_
