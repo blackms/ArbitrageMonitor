@@ -564,7 +564,7 @@ poetry run pytest tests/test_transaction_analyzer.py -v
 # Test profit calculator (token flow, gas costs, profit calculation)
 poetry run pytest tests/test_profit_calculator.py -v
 
-# Test pool scanner (reserve querying, imbalance detection)
+# Test pool scanner (reserve querying, CPMM imbalance detection, profit estimation)
 poetry run pytest tests/test_pool_scanner.py -v
 
 # Test database integration

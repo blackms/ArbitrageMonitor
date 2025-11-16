@@ -128,7 +128,7 @@
     - Log opportunity detection events
     - _Requirements: 4.7, 6.6_
 
-  - [ ]* 6.4 Write pool scanner tests
+  - [x] 6.4 Write pool scanner tests
     - Test reserve retrieval from pool contracts
     - Test CPMM invariant calculation
     - Test imbalance percentage calculation
