@@ -358,8 +358,8 @@
     - Test transaction archival after 90 days
     - _Requirements: 15.1-15.6_
 
-- [ ] 15. Create Docker deployment configuration
-  - [ ] 15.1 Create Dockerfile for backend service
+- [x] 15. Create Docker deployment configuration
+  - [x] 15.1 Create Dockerfile for backend service
     - Use Python 3.11 slim base image
     - Install dependencies via Poetry
     - Copy application code
@@ -368,7 +368,7 @@
     - Set CMD to run main application
     - _Requirements: 1.1-1.7_
 
-  - [ ] 15.2 Create docker-compose.yml
+  - [x] 15.2 Create docker-compose.yml
     - Define postgres service with volume for data persistence
     - Define monitor service with environment variables
     - Set up service dependencies (monitor depends on postgres)
@@ -383,8 +383,8 @@
     - Documents API keys
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 13.1_
 
-- [ ] 16. Create main application entry point
-  - [ ] 16.1 Implement application startup
+- [x] 16. Create main application entry point
+  - [x] 16.1 Implement application startup
     - Create main.py in project root
     - Initialize Settings from environment variables
     - Create DatabaseManager and connect
@@ -400,7 +400,7 @@
     - Set up signal handlers for graceful shutdown
     - _Requirements: 1.1-1.7, 9.1-9.6_
 
-  - [ ] 16.2 Implement graceful shutdown
+  - [x] 16.2 Implement graceful shutdown
     - Stop chain monitors on SIGTERM/SIGINT
     - Stop pool scanners
     - Close database connections

@@ -1,6 +1,6 @@
 """Prometheus metrics for monitoring system health and performance"""
 
-from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST, start_http_server
 
 # Chain Health Metrics
 chain_blocks_behind = Gauge(
@@ -136,3 +136,13 @@ def get_content_type() -> str:
         Content type string
     """
     return CONTENT_TYPE_LATEST
+
+
+def start_metrics_server(port: int = 9090) -> None:
+    """
+    Start Prometheus metrics HTTP server.
+    
+    Args:
+        port: Port to listen on (default 9090)
+    """
+    start_http_server(port)

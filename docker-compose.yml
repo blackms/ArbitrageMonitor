@@ -1,0 +1,97 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: arbitrage-postgres
+    environment:
+      POSTGRES_DB: arbitrage_monitor
+      POSTGRES_USER: monitor
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/database/schema.py:/docker-entrypoint-initdb.d/init.py:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monitor -d arbitrage_monitor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - arbitrage-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: arbitrage-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - arbitrage-network
+
+  # Multi-Chain Arbitrage Monitor
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: arbitrage-monitor
+    environment:
+      # Database
+      DATABASE_URL: postgresql://monitor:${DB_PASSWORD:-changeme}@postgres:5432/arbitrage_monitor
+      
+      # Redis
+      REDIS_URL: redis://redis:6379
+      
+      # BSC RPC Endpoints
+      BSC_RPC_PRIMARY: ${BSC_RPC_PRIMARY:-https://bsc-dataseed.bnbchain.org}
+      BSC_RPC_FALLBACK: ${BSC_RPC_FALLBACK:-https://bsc-dataseed1.binance.org}
+      
+      # Polygon RPC Endpoints
+      POLYGON_RPC_PRIMARY: ${POLYGON_RPC_PRIMARY:-https://polygon-rpc.com}
+      POLYGON_RPC_FALLBACK: ${POLYGON_RPC_FALLBACK:-https://rpc-mainnet.matic.network}
+      
+      # API Configuration
+      API_KEYS: ${API_KEYS:-dev_key_1,dev_key_2}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-100}
+      MAX_WEBSOCKET_CONNECTIONS: ${MAX_WEBSOCKET_CONNECTIONS:-100}
+      
+      # Monitoring
+      PROMETHEUS_PORT: ${PROMETHEUS_PORT:-9090}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - arbitrage-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/api/v1/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  arbitrage-network:
+    driver: bridge

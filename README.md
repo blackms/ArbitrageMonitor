@@ -3141,12 +3141,34 @@ The system includes comprehensive Prometheus metrics for monitoring system healt
 
 ### Metrics Endpoint
 
-The `/metrics` endpoint exposes Prometheus metrics in text format:
+The system provides two ways to expose Prometheus metrics:
+
+#### 1. Integrated with FastAPI (Default)
+
+The `/metrics` endpoint is automatically available on the main API server:
 
 ```bash
 # Access metrics endpoint (no authentication required)
 curl http://localhost:8000/metrics
 ```
+
+#### 2. Standalone Metrics Server
+
+For production deployments, you can run a dedicated metrics server on a separate port:
+
+```python
+from src.monitoring.metrics import start_metrics_server
+
+# Start standalone metrics server on port 9090
+start_metrics_server(port=9090)
+
+# Metrics available at http://localhost:9090/metrics
+```
+
+This approach is recommended for:
+- **Security**: Isolate metrics from public API
+- **Performance**: Separate metrics scraping from API traffic
+- **Monitoring**: Dedicated port for Prometheus scraping
 
 Response format:
 ```
@@ -3217,7 +3239,9 @@ total_profit_detected_usd{chain="Polygon"} 2876543.21
 
 ### Prometheus Configuration
 
-Add the following to your `prometheus.yml`:
+#### Scraping Integrated Metrics Endpoint
+
+Add the following to your `prometheus.yml` to scrape from the main API server:
 
 ```yaml
 scrape_configs:
@@ -3226,6 +3250,37 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:8000']
     metrics_path: '/metrics'
+```
+
+#### Scraping Standalone Metrics Server
+
+For production deployments using the standalone metrics server:
+
+```yaml
+scrape_configs:
+  - job_name: 'arbitrage-monitor-metrics'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:9090']
+    # Default path is /metrics, no need to specify
+```
+
+#### Multi-Target Configuration
+
+You can scrape both endpoints for redundancy:
+
+```yaml
+scrape_configs:
+  - job_name: 'arbitrage-monitor-api'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:8000']
+    metrics_path: '/metrics'
+    
+  - job_name: 'arbitrage-monitor-dedicated'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:9090']
 ```
 
 ### Example Queries
@@ -3407,11 +3462,95 @@ The script tests:
 
 For production monitoring:
 
-1. **Set up Prometheus server** to scrape the `/metrics` endpoint
-2. **Configure alerting rules** in Prometheus for critical conditions
-3. **Create Grafana dashboards** for visualization
-4. **Set up alert notifications** (PagerDuty, Slack, email)
-5. **Document operational runbooks** for common alerts
+1. **Start standalone metrics server** (recommended):
+   ```python
+   from src.monitoring.metrics import start_metrics_server
+   
+   # Start metrics server on dedicated port
+   start_metrics_server(port=9090)
+   ```
+
+2. **Set up Prometheus server** to scrape the metrics endpoint:
+   - Use port 9090 for standalone metrics server
+   - Or use port 8000 with `/metrics` path for integrated endpoint
+
+3. **Configure alerting rules** in Prometheus for critical conditions
+
+4. **Create Grafana dashboards** for visualization
+
+5. **Set up alert notifications** (PagerDuty, Slack, email)
+
+6. **Document operational runbooks** for common alerts
+
+#### Example Production Deployment
+
+```python
+import asyncio
+from src.monitoring.metrics import start_metrics_server
+from src.api.app import create_app
+from src.config.models import Settings
+from src.database.manager import DatabaseManager
+from src.cache.manager import CacheManager
+
+async def main():
+    # Initialize settings
+    settings = Settings()
+    
+    # Start standalone metrics server on port 9090
+    start_metrics_server(port=9090)
+    print("Metrics server started on port 9090")
+    
+    # Initialize database and cache
+    db_manager = DatabaseManager(settings.database_url)
+    cache_manager = CacheManager(settings.redis_url)
+    
+    await db_manager.connect()
+    await cache_manager.connect()
+    
+    # Create FastAPI app (metrics also available at /metrics)
+    app = create_app(settings, db_manager, cache_manager)
+    
+    # Run with uvicorn
+    import uvicorn
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000)
+    server = uvicorn.Server(config)
+    await server.serve()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+#### Docker Compose Configuration
+
+```yaml
+version: '3.8'
+
+services:
+  arbitrage-monitor:
+    build: .
+    ports:
+      - "8000:8000"  # API server
+      - "9090:9090"  # Metrics server
+    environment:
+      - DATABASE_URL=postgresql://user:pass@postgres:5432/arbitrage
+      - REDIS_URL=redis://redis:6379/0
+  
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+  
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+```
 
 ### Performance Impact
 
