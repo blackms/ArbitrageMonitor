@@ -80,14 +80,14 @@
     - Test swap method signature recognition
     - _Requirements: 2.1, 2.2, 2.3, 2.6, 2.7_
 
-- [-] 5. Implement profit calculation engine
-  - [ ] 5.1 Create profit calculator with token flow parsing
+- [x] 5. Implement profit calculation engine
+  - [x] 5.1 Create profit calculator with token flow parsing
     - Implement ProfitCalculator class in src/detectors/profit_calculator.py
     - Implement extract_token_flow to identify input from first swap and output from last swap
     - Handle both amount0In/amount1In and amount0Out/amount1Out fields from SwapEvent objects
     - _Requirements: 5.1, 5.2, 5.3_
 
-  - [ ] 5.2 Implement profit and gas cost calculation
+  - [x] 5.2 Implement profit and gas cost calculation
     - Calculate gross profit as output_amount - input_amount
     - Calculate gas cost as gasUsed * effectiveGasPrice from transaction receipt
     - Calculate net profit as gross_profit - gas_cost

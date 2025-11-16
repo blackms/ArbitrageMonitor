@@ -17,8 +17,9 @@ Production-ready system to detect, track, and analyze real multi-hop arbitrage o
 - **Swap Event Parsing**: Extracts token amounts (amount0In, amount1In, amount0Out, amount1Out) from event logs
 - **DEX Router Validation**: Verifies transactions target recognized DEX router addresses
 - **Method Signature Recognition**: Validates swap function calls (supports Uniswap V2/V3, Balancer, and more)
+- **Profit Calculator**: Calculates gross profit, gas costs, net profit, and ROI from arbitrage transactions
+- **Token Flow Analysis**: Extracts input/output amounts from multi-hop swap sequences
 - Pool imbalance detection using CPMM formulas
-- Real profit calculation including gas costs
 
 ### Data Management
 - PostgreSQL database with connection pooling (5-20 connections)
@@ -211,6 +212,118 @@ opportunities = await db.get_opportunities(
 )
 ```
 
+## Profit Calculator
+
+The profit calculator module provides comprehensive profit analysis for arbitrage transactions:
+
+### Features
+
+- **Token Flow Extraction**: Identifies input amount from first swap and output amount from last swap
+- **Gross Profit Calculation**: Computes profit as `output_amount - input_amount` in native tokens
+- **Gas Cost Analysis**: Calculates gas costs using `gasUsed * effectiveGasPrice` from transaction receipts
+- **Net Profit Calculation**: Determines actual profit after deducting gas costs
+- **ROI Calculation**: Computes return on investment as `(net_profit / input_amount) * 100`
+- **USD Conversion**: Converts all amounts to USD using configurable native token prices
+- **Detailed Gas Metrics**: Tracks gas used, gas price (wei and gwei), and costs in native token and USD
+
+### Data Classes
+
+The module provides structured data classes for profit analysis:
+
+```python
+@dataclass
+class TokenFlow:
+    """Token flow through swap sequence"""
+    input_amount: int           # Input amount in wei
+    output_amount: int          # Output amount in wei
+    input_token_index: int      # 0 or 1 (which token in first pool)
+    output_token_index: int     # 0 or 1 (which token in last pool)
+
+@dataclass
+class GasCost:
+    """Gas cost information"""
+    gas_used: int               # Total gas units consumed
+    gas_price_wei: int          # Effective gas price in wei
+    gas_price_gwei: Decimal     # Gas price in gwei (readable)
+    gas_cost_native: Decimal    # Gas cost in native token (BNB/MATIC)
+    gas_cost_usd: Decimal       # Gas cost in USD
+
+@dataclass
+class ProfitData:
+    """Complete profit calculation"""
+    gross_profit_native: Decimal    # Profit before gas costs
+    gross_profit_usd: Decimal       # Gross profit in USD
+    gas_cost: GasCost              # Detailed gas cost info
+    net_profit_native: Decimal     # Profit after gas costs
+    net_profit_usd: Decimal        # Net profit in USD
+    roi_percentage: Decimal        # Return on investment %
+    input_amount_native: Decimal   # Input amount in native token
+    output_amount_native: Decimal  # Output amount in native token
+```
+
+### Usage Example
+
+```python
+from src.detectors.profit_calculator import ProfitCalculator
+from src.detectors.transaction_analyzer import TransactionAnalyzer
+from decimal import Decimal
+
+# Initialize calculator with chain info and native token price
+calculator = ProfitCalculator(
+    chain_name="BSC",
+    native_token_usd_price=Decimal("300.0")  # BNB price
+)
+
+# Parse swap events from transaction receipt
+analyzer = TransactionAnalyzer("BSC", dex_routers)
+swaps = analyzer.parse_swap_events(receipt)
+
+# Calculate profit
+profit_data = calculator.calculate_profit(swaps, receipt)
+
+if profit_data:
+    print(f"Gross Profit: ${profit_data.gross_profit_usd:.2f}")
+    print(f"Gas Cost: ${profit_data.gas_cost.gas_cost_usd:.2f}")
+    print(f"Net Profit: ${profit_data.net_profit_usd:.2f}")
+    print(f"ROI: {profit_data.roi_percentage:.2f}%")
+    print(f"Gas Price: {profit_data.gas_cost.gas_price_gwei:.2f} gwei")
+```
+
+### Token Flow Extraction
+
+The calculator analyzes swap sequences to determine token flow:
+
+1. **First Swap**: Identifies input by finding non-zero `amount0In` or `amount1In`
+2. **Last Swap**: Identifies output by finding non-zero `amount0Out` or `amount1Out`
+3. **Validation**: Returns `None` if no valid input/output amounts found
+
+This handles complex multi-hop arbitrage paths like:
+- 2-hop: Token A → Token B → Token A
+- 3-hop: Token A → Token B → Token C → Token A
+- 4-hop: Token A → Token B → Token C → Token D → Token A
+
+### Profit Calculation Formula
+
+```
+gross_profit = output_amount - input_amount
+gas_cost = gas_used × effective_gas_price
+net_profit = gross_profit - gas_cost
+roi = (net_profit / input_amount) × 100
+```
+
+All amounts are converted from wei (10^18) to native token units and then to USD using the configured native token price.
+
+### Logging
+
+The calculator provides structured logging for debugging and monitoring:
+
+- `token_flow_extracted`: Logs input/output amounts and swap count
+- `gas_cost_calculated`: Logs gas metrics (used, price, costs)
+- `profit_calculated`: Logs complete profit analysis with ROI
+- `extract_token_flow_empty_swaps`: Warning for empty swap lists
+- `extract_token_flow_no_input`: Warning when no input amount found
+- `extract_token_flow_no_output`: Warning when no output amount found
+
 ## Development
 
 Run all tests:
@@ -225,6 +338,9 @@ poetry run pytest tests/test_chain_connector.py -v
 
 # Test transaction analyzer (swap detection, arbitrage classification)
 poetry run pytest tests/test_transaction_analyzer.py -v
+
+# Test profit calculator (token flow, gas costs, profit calculation)
+poetry run pytest tests/test_profit_calculator.py -v
 
 # Test database integration
 poetry run pytest tests/test_database.py -v
