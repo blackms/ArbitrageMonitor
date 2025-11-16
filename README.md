@@ -5,6 +5,7 @@ Production-ready system to detect, track, and analyze real multi-hop arbitrage o
 ## Features
 
 - Real-time monitoring of BSC and Polygon blockchains
+- Automatic RPC failover with circuit breaker pattern
 - Accurate arbitrage detection with zero false positives
 - Pool imbalance detection using CPMM formulas
 - Real profit calculation including gas costs

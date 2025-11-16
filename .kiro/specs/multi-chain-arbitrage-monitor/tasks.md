@@ -43,14 +43,14 @@
     - Define BSC pool addresses (WBNB pairs)
     - _Requirements: 1.1, 1.2, 3.1, 3.2, 3.3, 3.4, 3.5_
 
-  - [-] 3.3 Implement Polygon chain connector
+  - [x] 3.3 Implement Polygon chain connector
     - Create PolygonConnector class extending ChainConnector
     - Configure Polygon RPC endpoints (primary and fallback)
     - Define Polygon DEX router addresses (QuickSwap, SushiSwap, Uniswap V3, Balancer)
     - Define Polygon pool addresses (WMATIC pairs)
     - _Requirements: 1.3, 1.4, 3.6, 3.7, 3.8, 3.9_
 
-  - [ ] 3.4 Write chain connector tests
+  - [x] 3.4 Write chain connector tests
     - Test RPC failover mechanism
     - Test circuit breaker behavior
     - Test connection recovery after failures
