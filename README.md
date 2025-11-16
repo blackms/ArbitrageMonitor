@@ -334,6 +334,7 @@ The pool scanner module monitors liquidity pools in real-time to detect arbitrag
 - **Real-time Reserve Monitoring**: Queries pool reserves using `getReserves()` function on Uniswap V2-style pools
 - **Profit Potential Calculation**: Estimates profit after accounting for swap fees (default 0.3%)
 - **Configurable Thresholds**: Customizable imbalance threshold (default 5%) and scan intervals
+- **Small Opportunity Classification**: Tracks opportunities in the $10K-$100K range for small trader viability analysis
 - **Automatic Persistence**: Saves detected opportunities to database with full context
 - **Async Scanning Loop**: Non-blocking continuous monitoring with configurable intervals
 - **Multi-Pool Support**: Scans multiple pools per chain simultaneously
@@ -415,6 +416,8 @@ scanner = PoolScanner(
     scan_interval_seconds=3.0,      # Scan every 3 seconds (BSC block time)
     imbalance_threshold_pct=5.0,    # Detect imbalances >= 5%
     swap_fee_pct=0.3,               # Account for 0.3% swap fee
+    small_opp_min_usd=10000.0,      # Min profit for small opportunity ($10K)
+    small_opp_max_usd=100000.0,     # Max profit for small opportunity ($100K)
 )
 
 # Start continuous scanning
@@ -482,6 +485,8 @@ The pool scanner supports flexible configuration:
 - **scan_interval_seconds**: Time between scans (default 3.0 for BSC, 2.0 for Polygon)
 - **imbalance_threshold_pct**: Minimum imbalance to detect (default 5.0%)
 - **swap_fee_pct**: DEX swap fee to account for (default 0.3%)
+- **small_opp_min_usd**: Minimum profit for small opportunity classification (default $10,000)
+- **small_opp_max_usd**: Maximum profit for small opportunity classification (default $100,000)
 - **database_manager**: Optional database for persisting opportunities
 
 ### Scan Intervals by Chain
@@ -492,13 +497,28 @@ Recommended scan intervals based on block times:
 - **Polygon**: 2 seconds (matches ~2s block time)
 - **Ethereum**: 12 seconds (matches ~12s block time)
 
+### Small Opportunity Tracking
+
+The scanner tracks opportunities in the $10K-$100K profit range to analyze viability for small traders:
+
+```python
+# Check if an opportunity qualifies as "small"
+is_small = scanner.is_small_opportunity(Decimal("50000"))  # Returns True
+
+# Get count of small opportunities detected
+small_count = scanner.get_small_opportunity_count()
+print(f"Small opportunities detected: {small_count}")
+```
+
+This data is used by the StatsAggregator to calculate capture rates and competition levels specifically for small traders.
+
 ### Logging
 
 The scanner provides structured logging for monitoring:
 
-- `pool_scanner_started`: Scanner initialization with configuration
+- `pool_scanner_started`: Scanner initialization with configuration (includes small opportunity range)
 - `pool_reserves_fetched`: Successful reserve query with amounts
-- `opportunity_detected`: Opportunity found with imbalance and profit details
+- `opportunity_detected`: Opportunity found with imbalance and profit details (includes `is_small_opportunity` flag)
 - `pool_scanner_stopped`: Scanner shutdown
 - `pool_reserves_fetch_failed`: Warning when reserve query fails
 - `pool_reserves_zero`: Warning when reserves are zero

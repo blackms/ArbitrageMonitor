@@ -489,6 +489,89 @@ class TestPoolScannerConfiguration:
         assert scanner.swap_fee_pct == Decimal("0.25")
 
 
+class TestSmallOpportunityClassification:
+    """Test small opportunity classification for $10K-$100K range"""
+
+    def test_is_small_opportunity_within_range(self, bsc_scanner):
+        """Test opportunity within $10K-$100K is classified as small"""
+        profit_usd = Decimal("50000")  # $50K
+        
+        is_small = bsc_scanner.is_small_opportunity(profit_usd)
+        
+        assert is_small is True
+
+    def test_is_small_opportunity_at_lower_bound(self, bsc_scanner):
+        """Test opportunity at exactly $10K is classified as small"""
+        profit_usd = Decimal("10000")  # $10K
+        
+        is_small = bsc_scanner.is_small_opportunity(profit_usd)
+        
+        assert is_small is True
+
+    def test_is_small_opportunity_at_upper_bound(self, bsc_scanner):
+        """Test opportunity at exactly $100K is classified as small"""
+        profit_usd = Decimal("100000")  # $100K
+        
+        is_small = bsc_scanner.is_small_opportunity(profit_usd)
+        
+        assert is_small is True
+
+    def test_is_small_opportunity_below_range(self, bsc_scanner):
+        """Test opportunity below $10K is not classified as small"""
+        profit_usd = Decimal("5000")  # $5K
+        
+        is_small = bsc_scanner.is_small_opportunity(profit_usd)
+        
+        assert is_small is False
+
+    def test_is_small_opportunity_above_range(self, bsc_scanner):
+        """Test opportunity above $100K is not classified as small"""
+        profit_usd = Decimal("150000")  # $150K
+        
+        is_small = bsc_scanner.is_small_opportunity(profit_usd)
+        
+        assert is_small is False
+
+    def test_is_small_opportunity_just_below_lower_bound(self, bsc_scanner):
+        """Test opportunity just below $10K is not classified as small"""
+        profit_usd = Decimal("9999.99")
+        
+        is_small = bsc_scanner.is_small_opportunity(profit_usd)
+        
+        assert is_small is False
+
+    def test_is_small_opportunity_just_above_upper_bound(self, bsc_scanner):
+        """Test opportunity just above $100K is not classified as small"""
+        profit_usd = Decimal("100000.01")
+        
+        is_small = bsc_scanner.is_small_opportunity(profit_usd)
+        
+        assert is_small is False
+
+    def test_get_small_opportunity_count_initial(self, bsc_scanner):
+        """Test small opportunity count is zero initially"""
+        count = bsc_scanner.get_small_opportunity_count()
+        
+        assert count == 0
+
+    def test_scanner_with_custom_small_opp_range(self, mock_chain_connector, bsc_config):
+        """Test scanner with custom small opportunity range"""
+        scanner = PoolScanner(
+            chain_connector=mock_chain_connector,
+            config=bsc_config,
+            small_opp_min_usd=20000.0,
+            small_opp_max_usd=80000.0,
+        )
+        
+        assert scanner.small_opp_min_usd == Decimal("20000")
+        assert scanner.small_opp_max_usd == Decimal("80000")
+        
+        # Test classification with custom range
+        assert scanner.is_small_opportunity(Decimal("30000")) is True
+        assert scanner.is_small_opportunity(Decimal("15000")) is False
+        assert scanner.is_small_opportunity(Decimal("90000")) is False
+
+
 class TestEdgeCases:
     """Test edge cases and boundary conditions"""
 

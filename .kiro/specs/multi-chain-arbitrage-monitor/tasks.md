@@ -164,7 +164,7 @@
     - Log chain monitor lifecycle events
     - _Requirements: 1.7, 9.5, 14.5, 14.6_
 
-  - [ ]* 7.4 Write chain monitor integration tests
+  - [x] 7.4 Write chain monitor integration tests
     - Test block detection and processing
     - Test transaction filtering by DEX router
     - Test RPC failover on connection errors
@@ -190,14 +190,14 @@
     - Test preferred strategy calculation (completed in test_database.py)
     - _Requirements: 10.1-10.8_
 
-- [ ] 9. Implement small trader viability analysis
-  - [ ] 9.1 Add small opportunity classification
+- [x] 9. Implement small trader viability analysis
+  - [x] 9.1 Add small opportunity classification
     - In PoolScanner, classify opportunities with profit $10K-$100K as "small"
     - Add is_small_opportunity helper method to check profit range
     - Track small opportunity count when saving to database
     - _Requirements: 11.1, 11.2, 11.3_
 
-  - [ ] 9.2 Implement statistics aggregation service
+  - [x] 9.2 Implement statistics aggregation service
     - Create StatsAggregator class in src/analytics/stats_aggregator.py
     - Implement hourly aggregation job to populate chain_stats table
     - Calculate capture_rate as (total_captured / total_opportunities) * 100
@@ -205,7 +205,7 @@
     - Query opportunities and transactions from database for aggregation
     - _Requirements: 11.4_
 
-  - [ ] 9.3 Add competition level tracking
+  - [x] 9.3 Add competition level tracking
     - Track unique arbitrageurs per hour in chain_stats
     - For small opportunities, track which arbitrageurs captured them
     - Calculate average competition level as arbitrageurs per opportunity

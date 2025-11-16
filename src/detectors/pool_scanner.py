@@ -74,6 +74,8 @@ class PoolScanner:
         scan_interval_seconds: float = 3.0,
         imbalance_threshold_pct: float = 5.0,
         swap_fee_pct: float = 0.3,
+        small_opp_min_usd: float = 10000.0,
+        small_opp_max_usd: float = 100000.0,
     ):
         """
         Initialize pool scanner.
@@ -85,6 +87,8 @@ class PoolScanner:
             scan_interval_seconds: Seconds between pool scans (default 3 for BSC, 2 for Polygon)
             imbalance_threshold_pct: Minimum imbalance percentage to detect (default 5%)
             swap_fee_pct: DEX swap fee percentage (default 0.3%)
+            small_opp_min_usd: Minimum profit for small opportunity classification (default $10K)
+            small_opp_max_usd: Maximum profit for small opportunity classification (default $100K)
         """
         self.chain_connector = chain_connector
         self.config = config
@@ -92,6 +96,8 @@ class PoolScanner:
         self.scan_interval_seconds = scan_interval_seconds
         self.imbalance_threshold_pct = Decimal(str(imbalance_threshold_pct))
         self.swap_fee_pct = Decimal(str(swap_fee_pct))
+        self.small_opp_min_usd = Decimal(str(small_opp_min_usd))
+        self.small_opp_max_usd = Decimal(str(small_opp_max_usd))
         
         self.chain_name = config.name
         self.chain_id = config.chain_id
@@ -103,6 +109,7 @@ class PoolScanner:
         )
         self._running = False
         self._scan_task: Optional[asyncio.Task] = None
+        self._small_opportunity_count = 0
 
     async def get_pool_reserves(self, pool_address: str, pool_name: str) -> Optional[PoolReserves]:
         """
@@ -154,6 +161,21 @@ class PoolScanner:
                 error=str(e),
             )
             return None
+
+    def is_small_opportunity(self, profit_usd: Decimal) -> bool:
+        """
+        Check if opportunity qualifies as a small opportunity.
+        
+        Small opportunities are those with profit between $10K-$100K,
+        targeting small traders with limited capital.
+        
+        Args:
+            profit_usd: Profit potential in USD
+            
+        Returns:
+            True if opportunity is classified as small, False otherwise
+        """
+        return self.small_opp_min_usd <= profit_usd <= self.small_opp_max_usd
 
     def calculate_imbalance(
         self,
@@ -278,12 +300,18 @@ class PoolScanner:
                 
                 opportunities.append(opportunity)
                 
+                # Track small opportunity count
+                is_small = self.is_small_opportunity(imbalance_data.profit_potential_usd)
+                if is_small:
+                    self._small_opportunity_count += 1
+                
                 self._logger.info(
                     "opportunity_detected",
                     pool_name=pool_name,
                     pool_address=pool_address,
                     imbalance_pct=float(imbalance_data.imbalance_pct),
                     profit_usd=float(imbalance_data.profit_potential_usd),
+                    is_small_opportunity=is_small,
                     block_number=block_number,
                 )
                 
@@ -300,6 +328,15 @@ class PoolScanner:
         
         return opportunities
 
+    def get_small_opportunity_count(self) -> int:
+        """
+        Get the count of small opportunities detected.
+        
+        Returns:
+            Number of small opportunities detected since scanner started
+        """
+        return self._small_opportunity_count
+
     async def start(self) -> None:
         """Start pool scanning loop"""
         if self._running:
@@ -307,12 +344,14 @@ class PoolScanner:
             return
         
         self._running = True
+        self._small_opportunity_count = 0  # Reset counter on start
         self._scan_task = asyncio.create_task(self._scan_loop())
         
         self._logger.info(
             "pool_scanner_started",
             scan_interval_seconds=self.scan_interval_seconds,
             imbalance_threshold_pct=float(self.imbalance_threshold_pct),
+            small_opp_range=f"${float(self.small_opp_min_usd)}-${float(self.small_opp_max_usd)}",
         )
 
     async def stop(self) -> None:
